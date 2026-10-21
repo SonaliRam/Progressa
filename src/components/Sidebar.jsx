@@ -28,8 +28,8 @@ export default function Sidebar() {
           <Sparkles size={20} />
         </div>
         <div className="brand-text">
-          <strong>Work &amp; Learn</strong>
-          <span>Tasks · Skills · Growth</span>
+          <strong>Progressaa</strong>
+          <span>Progress Over Perfection.</span>
         </div>
       </div>
 
