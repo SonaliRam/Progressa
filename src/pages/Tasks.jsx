@@ -71,7 +71,7 @@ function CalendarCell({ dateKey, inMonth, isToday, selected, tasks, onSelect, on
 }
 
 export default function Tasks() {
-  const { tasks, configured, loaded } = useData();
+  const { tasks, configured, loaded, resolveId } = useData();
   const today = useToday();
   const [params, setParams] = useSearchParams();
 
@@ -88,15 +88,13 @@ export default function Tasks() {
     setCursor({ y: d.getFullYear(), m: d.getMonth() });
   }, [selected]);
 
-  const [statusF, setStatusF] = useState(params.get('status') || 'All');
-  const [priorityF, setPriorityF] = useState(params.get('priority') || 'All');
+  // Filters live in the URL so chart links (e.g. "Blocked") and refreshes keep them.
+  const statusF = TASK_STATUSES.includes(params.get('status')) ? params.get('status') : 'All';
+  const priorityF = PRIORITIES.includes(params.get('priority')) ? params.get('priority') : 'All';
   const [q, setQ] = useState('');
-  useEffect(() => {
-    if (params.get('status')) setStatusF(params.get('status'));
-    if (params.get('priority')) setPriorityF(params.get('priority'));
-  }, [params]);
 
   const [form, setForm] = useState({ open: false, task: null, date: null });
+  const liveTask = form.task && (tasks.find((t) => t.id === resolveId(form.task.id)) || form.task);
 
   const setParam = (patch) => {
     const next = new URLSearchParams(params);
@@ -104,26 +102,33 @@ export default function Tasks() {
     setParams(next, { replace: true });
   };
 
-  const filtered = useMemo(() => {
+  // Search + priority apply everywhere; the status filter is checked per day on the calendar
+  // (a multi-day task can be Completed on Monday and In Progress on Tuesday) and on the
+  // overall status in the list.
+  const base = useMemo(() => {
     const term = q.trim().toLowerCase();
     return tasks.filter(
-      (t) =>
-        (statusF === 'All' || t.status === statusF) &&
-        (priorityF === 'All' || t.priority === priorityF) &&
-        (!term || `${t.title} ${t.description} ${t.notes}`.toLowerCase().includes(term))
+      (t) => (priorityF === 'All' || t.priority === priorityF) && (!term || `${t.title} ${t.description} ${t.notes}`.toLowerCase().includes(term))
     );
-  }, [tasks, statusF, priorityF, q]);
+  }, [tasks, priorityF, q]);
+  const filtered = useMemo(() => base.filter((t) => statusF === 'All' || t.status === statusF), [base, statusF]);
+  const onDay = (list, k) => list.filter((t) => isOnDate(t, k) && (statusF === 'All' || dailyStatusFor(t, k) === statusF));
 
   const grid = useMemo(() => monthGrid(cursor.y, cursor.m), [cursor]);
   const byDay = useMemo(() => {
     const map = {};
     grid.forEach((k) => {
-      map[k] = sortTasks(filtered.filter((t) => isOnDate(t, k)), k);
+      map[k] = sortTasks(onDay(base, k), k);
     });
     return map;
-  }, [grid, filtered]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [grid, base, statusF]);
 
-  const dayTasks = useMemo(() => sortTasks(filtered.filter((t) => isOnDate(t, selected)), selected), [filtered, selected]);
+  const dayTasks = useMemo(
+    () => sortTasks(onDay(base, selected), selected),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [base, selected, statusF]
+  );
 
   const groups = useMemo(() => {
     const overdue = [];
@@ -166,13 +171,13 @@ export default function Tasks() {
         <Search size={16} />
         <input className="input" placeholder="Search tasks…" value={q} onChange={(e) => setQ(e.target.value)} />
       </div>
-      <select className="input select" value={statusF} onChange={(e) => { setStatusF(e.target.value); setParam({ status: e.target.value === 'All' ? '' : e.target.value }); }} aria-label="Filter by status">
+      <select className="input select" value={statusF} onChange={(e) => setParam({ status: e.target.value === 'All' ? '' : e.target.value })} aria-label="Filter by status">
         <option value="All">All statuses</option>
         {TASK_STATUSES.map((s) => (
           <option key={s}>{s}</option>
         ))}
       </select>
-      <select className="input select" value={priorityF} onChange={(e) => { setPriorityF(e.target.value); setParam({ priority: e.target.value === 'All' ? '' : e.target.value }); }} aria-label="Filter by priority">
+      <select className="input select" value={priorityF} onChange={(e) => setParam({ priority: e.target.value === 'All' ? '' : e.target.value })} aria-label="Filter by priority">
         <option value="All">All priorities</option>
         {PRIORITIES.map((p) => (
           <option key={p}>{p}</option>
@@ -333,7 +338,7 @@ export default function Tasks() {
         </section>
       )}
 
-      <TaskForm open={form.open} task={form.task} defaultDate={form.date} onClose={() => setForm({ open: false, task: null, date: null })} />
+      <TaskForm open={form.open} task={liveTask} defaultDate={form.date} onClose={() => setForm({ open: false, task: null, date: null })} />
     </div>
   );
 }

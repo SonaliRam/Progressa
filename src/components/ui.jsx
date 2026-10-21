@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { AlertTriangle, CheckCircle2, Loader2, X } from 'lucide-react';
 import { PRIORITY_STYLE, STATUS_STYLE } from '../lib/constants';
 import { useData } from '../context/DataContext';
@@ -100,7 +101,9 @@ export function Modal({ open, title, onClose, children, footer, width = 620 }) {
     };
   }, [open]);
   if (!open) return null;
-  return (
+  // Render into <body> so the modal is always centred on the screen. Inside the page,
+  // the .page "rise" animation (transform) would make position:fixed relative to the page.
+  return createPortal(
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal clay" style={{ maxWidth: width }} ref={ref} role="dialog" aria-modal="true" aria-label={title}>
         <div className="modal-head">
@@ -112,7 +115,8 @@ export function Modal({ open, title, onClose, children, footer, width = 620 }) {
         <div className="modal-body">{children}</div>
         {footer && <div className="modal-foot">{footer}</div>}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 

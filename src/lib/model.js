@@ -1,4 +1,4 @@
-import { TASK_STATUSES, PRIORITIES, SKILL_LEVELS } from './constants';
+import { TASK_STATUSES, PRIORITIES } from './constants';
 import { normDate } from './dates';
 
 const str = (v) => (v === null || v === undefined ? '' : String(v));
@@ -35,24 +35,6 @@ export function normTask(r = {}) {
   };
 }
 
-export function normLearning(r = {}) {
-  const hours = Number(r.hours);
-  const progress = Number(r.progress);
-  return {
-    id: str(r.id),
-    date: normDate(r.date),
-    category: str(r.category).trim() || 'Other',
-    topic: str(r.topic),
-    hours: Number.isFinite(hours) ? Math.max(0, hours) : 0,
-    progress: Number.isFinite(progress) ? Math.min(100, Math.max(0, progress)) : 0,
-    skillLevel: SKILL_LEVELS.includes(r.skillLevel) ? r.skillLevel : 'Beginner',
-    notes: str(r.notes),
-    createdAt: str(r.createdAt),
-    updatedAt: str(r.updatedAt),
-    _pending: Boolean(r._pending)
-  };
-}
-
 /** Fields the sheet stores, in the shape Apps Script expects. */
 export function taskPayload(t) {
   return {
@@ -67,43 +49,53 @@ export function taskPayload(t) {
   };
 }
 
-export function learningPayload(l) {
-  return {
-    date: l.date,
-    category: l.category,
-    topic: l.topic,
-    hours: Number(l.hours) || 0,
-    progress: Number(l.progress) || 0,
-    skillLevel: l.skillLevel,
-    notes: l.notes
-  };
-}
-
 export const isMultiDay = (t) => t.endDate && t.endDate !== t.startDate;
 export const isOnDate = (t, key) => t.startDate && t.startDate <= key && key <= (t.endDate || t.startDate);
 export const isDone = (t) => t.status === 'Completed';
 
-/** Status of a task on a given day (daily log wins, otherwise the overall status). */
+/**
+ * Status of a task on a given day — the single rule every page uses.
+ * - One-day task: the day status IS the task status (the Status column).
+ * - Multi-day task that is Completed: every day shows Completed.
+ * - Otherwise the day's own entry in Daily Log wins, falling back to the task status.
+ */
 export function dailyStatusFor(t, key) {
-  return t.dailyLog?.[key]?.status || t.status;
+  if (!isMultiDay(t) || t.status === 'Completed') return t.status;
+  const day = t.dailyLog?.[key]?.status;
+  return TASK_STATUSES.includes(day) ? day : t.status;
 }
 
 export const dayNoteFor = (t, key) => t.dailyLog?.[key]?.note || '';
 
 /**
  * Returns the patch to save when the user sets a task's status for one day.
- * Single-day tasks: the day status is the task status.
- * Multi-day tasks: "Completed" only finishes the whole task on/after its last day;
- * earlier days just log progress. "Blocked" blocks the task.
+ * One-day tasks: only the Status column changes.
+ * Multi-day tasks: the day is logged in Daily Log. "Completed" finishes the whole task
+ * only on/after its last day (earlier days just log progress). "Blocked" blocks the task.
  */
 export function dailyStatusPatch(t, key, status) {
+  if (!isMultiDay(t)) return { status };
   const dailyLog = { ...(t.dailyLog || {}), [key]: { ...(t.dailyLog?.[key] || {}), status } };
-  let overall = status;
-  if (isMultiDay(t)) {
-    if (status === 'Completed') overall = key >= t.endDate ? 'Completed' : 'In Progress';
-    else overall = status;
-  }
+  const overall = status === 'Completed' && key < t.endDate ? 'In Progress' : status;
   return { dailyLog, status: overall };
+}
+
+/**
+ * Daily Log to save when a task is edited in the form: drops days outside the new
+ * date range and, when the overall status is changed on a multi-day task, records
+ * that status for today so the Dashboard/calendar show the same thing as the list.
+ */
+export function dailyLogForEdit(task, form, today) {
+  const log = {};
+  Object.entries(task?.dailyLog || {}).forEach(([k, v]) => {
+    if (k >= form.startDate && k <= form.endDate) log[k] = v;
+  });
+  const multi = form.endDate !== form.startDate;
+  const changed = !task || form.status !== task.status;
+  if (multi && changed && form.status !== 'Completed' && today >= form.startDate && today <= form.endDate) {
+    log[today] = { ...(log[today] || {}), status: form.status };
+  }
+  return log;
 }
 
 export function dayNotePatch(t, key, note) {

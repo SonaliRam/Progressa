@@ -3,6 +3,7 @@
  *  Work & Learn — Google Apps Script backend
  *  Database: Google Sheet "Sonali Work and Learning"
  *  Tabs:     "Task"  and  "Learning"
+ *            Learning = one row per category / technology / topic / resource
  * ================================================================
  *
  *  SETUP (see SETUP.md for screenshots-free, step-by-step guide)
@@ -30,6 +31,9 @@ const SPREADSHEET_ID = '1bdt6aVBR5Hc4nDZyZsLMIXmS47Zk1fE9QxgKQHEDD7I';
 // in the app's Settings page. Leave '' to disable the check.
 const API_KEY = '';
 
+// Bump when the data format changes; the app checks it before saving learning data.
+const API_VERSION = 2;
+
 // [appField, Sheet column header]
 const SCHEMAS = {
   Task: [
@@ -46,29 +50,51 @@ const SCHEMAS = {
     ['updatedAt', 'Updated At'],
     ['completedAt', 'Completed At']
   ],
+  // One row per item. Type = category | technology | topic | resource.
+  // Parent ID links: technology -> category, topic -> technology,
+  // resource -> technology (macro resource) or topic (micro resource).
   Learning: [
     ['id', 'ID'],
-    ['date', 'Date'],
+    ['type', 'Type'],
+    ['parentId', 'Parent ID'],
+    ['order', 'Order'],
+    ['title', 'Title'],
+    ['status', 'Status'],
+    ['color', 'Color'],
+    ['url', 'URL'],
+    ['resourceKind', 'Resource Kind'],
+    ['notes', 'Notes'],
+    ['takeaways', 'Key Takeaways'],
+    ['evidence', 'Practical Evidence'],
+    ['createdAt', 'Created At'],
+    ['updatedAt', 'Updated At'],
+    ['completedAt', 'Completed At']
+  ]
+};
+
+// Columns from the old hours-based learning log. They are never written, only read so the
+// app can offer to import old rows as topics.
+const LEGACY_COLUMNS = {
+  Learning: [
     ['category', 'Category'],
     ['topic', 'Topic'],
-    ['hours', 'Hours'],
+    ['date', 'Date'],
     ['progress', 'Progress (%)'],
-    ['skillLevel', 'Skill Level'],
-    ['notes', 'Notes'],
-    ['createdAt', 'Created At'],
-    ['updatedAt', 'Updated At']
+    ['skillLevel', 'Skill Level']
   ]
 };
 
 const DATE_FIELDS = ['startDate', 'endDate', 'date'];          // stored as yyyy-MM-dd text
-const TEXT_FIELDS = ['id', 'startDate', 'endDate', 'date', 'dailyLog', 'createdAt', 'updatedAt', 'completedAt'];
-const NUMBER_FIELDS = ['hours', 'progress'];
+const TEXT_FIELDS = ['id', 'parentId', 'startDate', 'endDate', 'date', 'dailyLog', 'url', 'createdAt', 'updatedAt', 'completedAt'];
+const NUMBER_FIELDS = ['order'];
 const JSON_FIELDS = ['dailyLog'];
 const READ_ONLY_FIELDS = ['id', 'createdAt', 'updatedAt', 'completedAt'];
 
 const TASK_STATUSES = ['In Progress', 'Completed', 'Blocked'];
 const PRIORITIES = ['High', 'Medium', 'Low'];
-const SKILL_LEVELS = ['Beginner', 'Intermediate', 'Advanced', 'Expert'];
+const LEARNING_TYPES = ['category', 'technology', 'topic', 'resource'];
+const TOPIC_STATUSES = ['Not Started', 'Learning', 'Practicing', 'Completed'];
+const RESOURCE_KINDS = ['GitHub', 'Document', 'Link', 'Video', 'Course'];
 
 /* ---------------------------------------------------------------- */
 /*  Entry points                                                     */
@@ -110,16 +136,17 @@ function handle_(req) {
     const action = String(req.action || '');
 
     if (action === 'ping') {
-      return json_({ ok: true, data: { pong: true, sheets: Object.keys(SCHEMAS), time: new Date().toISOString() } });
+      return json_({ ok: true, data: { pong: true, version: API_VERSION, sheets: Object.keys(SCHEMAS), time: new Date().toISOString() } });
     }
 
     const lock = LockService.getScriptLock();
     lock.waitLock(25000);
+    Object.keys(ROW_CACHE_).forEach(function (k) { ROW_CACHE_[k] = null; });
     try {
       let data;
       switch (action) {
         case 'getAll':
-          data = { Task: readAll_('Task'), Learning: readAll_('Learning') };
+          data = { Task: readAll_('Task'), Learning: readAll_('Learning'), meta: { version: API_VERSION } };
           break;
         case 'list':
           data = readAll_(sheetName_(req.sheet));
@@ -132,6 +159,16 @@ function handle_(req) {
           break;
         case 'delete':
           data = remove_(sheetName_(req.sheet), req.id);
+          break;
+        case 'batch':
+          // Several changes in one request (reordering, deleting a category with everything in it…)
+          data = (req.ops || []).map(function (op) {
+            const name = sheetName_(op.sheet);
+            if (op.action === 'create') return create_(name, op.data || {});
+            if (op.action === 'update') return update_(name, op.id, op.data || {});
+            if (op.action === 'delete') return remove_(name, op.id, true);
+            throw new Error('Unknown batch action: "' + op.action + '"');
+          });
           break;
         default:
           throw new Error('Unknown action: "' + action + '"');
@@ -182,12 +219,14 @@ function create_(name, input) {
   record.id = Utilities.getUuid();
   record.createdAt = now;
   record.updatedAt = now;
-  if (name === 'Task') {
+  validate_(name, record);
+  if (tracksCompletion_(name, record)) {
     record.completedAt = record.status === 'Completed' ? now : '';
   }
-  validate_(name, record);
 
-  sh.appendRow(objectToRow_(name, headers, record));
+  const rowIndex = sh.getLastRow() + 1;
+  writeRow_(sh, rowIndex, name, headers, objectToRow_(name, headers, record));
+  if (ROW_CACHE_[name]) ROW_CACHE_[name][record.id] = rowIndex;
   return record;
 }
 
@@ -198,7 +237,8 @@ function update_(name, id, patch) {
   const rowIndex = findRow_(sh, headers, name, id);
   if (rowIndex < 0) throw new Error('Record not found (it may have been deleted in the sheet).');
 
-  const current = rowToObject_(name, headers, sh.getRange(rowIndex, 1, 1, headers.length).getValues()[0]);
+  const currentRow = sh.getRange(rowIndex, 1, 1, headers.length).getValues()[0];
+  const current = rowToObject_(name, headers, currentRow);
   const changes = clean_(name, patch);
   const merged = Object.assign({}, current, changes);
   const now = new Date().toISOString();
@@ -206,27 +246,32 @@ function update_(name, id, patch) {
   merged.id = current.id;
   merged.createdAt = current.createdAt;
   merged.updatedAt = now;
-  if (name === 'Task') {
-    if (merged.status === 'Completed') {
-      merged.completedAt = current.completedAt || now;
-    } else {
-      merged.completedAt = '';
-    }
-  }
   validate_(name, merged);
+  if (tracksCompletion_(name, merged)) {
+    merged.completedAt = merged.status === 'Completed' ? current.completedAt || now : '';
+  }
 
-  sh.getRange(rowIndex, 1, 1, headers.length).setValues([objectToRow_(name, headers, merged)]);
+  // Start from the existing row so any extra columns you added yourself are kept.
+  writeRow_(sh, rowIndex, name, headers, objectToRow_(name, headers, merged, currentRow));
   return merged;
 }
 
-function remove_(name, id) {
+function remove_(name, id, lenient) {
   if (!id) throw new Error('Missing record id.');
   const sh = getSheet_(name);
   const headers = ensureHeaders_(sh, name, false);
   const rowIndex = findRow_(sh, headers, name, id);
-  if (rowIndex < 0) throw new Error('Record not found (it may already be deleted).');
+  if (rowIndex < 0) {
+    if (lenient) return { id: id, missing: true };
+    throw new Error('Record not found (it may already be deleted).');
+  }
   sh.deleteRow(rowIndex);
+  ROW_CACHE_[name] = null; // rows below moved up
   return { id: id };
+}
+
+function tracksCompletion_(name, r) {
+  return name === 'Task' || (name === 'Learning' && r.type === 'topic');
 }
 
 /* ---------------------------------------------------------------- */
@@ -286,15 +331,22 @@ function ensureHeaders_(sh, name, force) {
   return headers;
 }
 
+// id -> row number, built once per request (kept fresh by create/delete) so batches stay fast.
+const ROW_CACHE_ = {};
 function findRow_(sh, headers, name, id) {
-  const lastRow = sh.getLastRow();
-  if (lastRow < 2) return -1;
-  const col = headers.indexOf(headerFor_(name, 'id')) + 1;
-  const ids = sh.getRange(2, col, lastRow - 1, 1).getValues();
-  for (let i = 0; i < ids.length; i++) {
-    if (String(ids[i][0]) === String(id)) return i + 2;
+  if (!ROW_CACHE_[name]) {
+    const map = {};
+    const lastRow = sh.getLastRow();
+    if (lastRow >= 2) {
+      const col = headers.indexOf(headerFor_(name, 'id')) + 1;
+      sh.getRange(2, col, lastRow - 1, 1).getValues().forEach(function (r, i) {
+        if (r[0] !== '' && r[0] !== null) map[String(r[0])] = i + 2;
+      });
+    }
+    ROW_CACHE_[name] = map;
   }
-  return -1;
+  const row = ROW_CACHE_[name][String(id)];
+  return row ? row : -1;
 }
 
 let TZ_CACHE_ = null;
@@ -315,16 +367,46 @@ function rowToObject_(name, headers, row) {
     }
     if (DATE_FIELDS.indexOf(key) !== -1) v = normaliseDate_(v);
     if (NUMBER_FIELDS.indexOf(key) !== -1) v = v === '' || v === null ? 0 : Number(v) || 0;
+    // Undo the apostrophe added to stop text being read as a formula.
+    if (typeof v === 'string' && /^'[=+]/.test(v)) v = v.slice(1);
     if (JSON_FIELDS.indexOf(key) !== -1) {
       try { v = v ? JSON.parse(v) : {}; } catch (e) { v = {}; }
     }
     obj[key] = v === null || v === undefined ? '' : v;
   });
+  // Old hours-based learning rows (no Type yet): pass their old columns along for importing.
+  if (name === 'Learning' && !obj.type && LEGACY_COLUMNS.Learning) {
+    const legacy = {};
+    LEGACY_COLUMNS.Learning.forEach(function (pair) {
+      const idx = headers.indexOf(pair[1]);
+      if (idx < 0) return;
+      let v = row[idx];
+      if (v instanceof Date) v = Utilities.formatDate(v, tz, 'yyyy-MM-dd');
+      legacy[pair[0]] = v === null || v === undefined ? '' : v;
+    });
+    obj.legacy = legacy;
+  }
   return obj;
 }
 
-function objectToRow_(name, headers, obj) {
-  const row = headers.map(function () { return ''; });
+/**
+ * Writes one row. App columns (except numbers) are set to plain text first, so values such
+ * as "12/10" or "1-2" in a title or note are saved exactly as typed instead of becoming dates.
+ */
+function writeRow_(sh, rowIndex, name, headers, values) {
+  if (rowIndex > sh.getMaxRows()) sh.insertRowsAfter(sh.getMaxRows(), rowIndex - sh.getMaxRows());
+  const range = sh.getRange(rowIndex, 1, 1, headers.length);
+  const formats = range.getNumberFormats()[0];
+  SCHEMAS[name].forEach(function (pair) {
+    const idx = headers.indexOf(pair[1]);
+    if (idx >= 0 && NUMBER_FIELDS.indexOf(pair[0]) === -1) formats[idx] = '@';
+  });
+  range.setNumberFormats([formats]);
+  range.setValues([values]);
+}
+
+function objectToRow_(name, headers, obj, baseRow) {
+  const row = headers.map(function (h, i) { return baseRow && baseRow[i] !== undefined ? baseRow[i] : ''; });
   SCHEMAS[name].forEach(function (pair) {
     const idx = headers.indexOf(pair[1]);
     if (idx < 0) return;
@@ -366,11 +448,22 @@ function validate_(name, r) {
     if (TASK_STATUSES.indexOf(r.status) === -1) r.status = 'In Progress';
     if (PRIORITIES.indexOf(r.priority) === -1) r.priority = 'Medium';
   } else {
-    if (!r.date) throw new Error('Learning date is required (yyyy-MM-dd).');
-    if (!r.category) throw new Error('Learning category is required.');
-    r.hours = Math.max(0, Math.round(Number(r.hours || 0) * 100) / 100);
-    r.progress = Math.min(100, Math.max(0, Math.round(Number(r.progress || 0))));
-    if (SKILL_LEVELS.indexOf(r.skillLevel) === -1) r.skillLevel = 'Beginner';
+    if (LEARNING_TYPES.indexOf(r.type) === -1) throw new Error('Learning item type must be one of: ' + LEARNING_TYPES.join(', ') + '.');
+    if (!r.title && r.type === 'resource' && r.url) r.title = r.url;
+    if (!r.title) throw new Error('A ' + r.type + ' needs a title.');
+    if (r.type === 'category') r.parentId = '';
+    else if (!r.parentId) throw new Error('A ' + r.type + ' needs a parent (Parent ID).');
+    r.order = Number(r.order) || 0;
+    if (r.type === 'topic') {
+      if (TOPIC_STATUSES.indexOf(r.status) === -1) r.status = 'Not Started';
+    } else {
+      r.status = '';
+    }
+    if (r.type === 'resource') {
+      if (RESOURCE_KINDS.indexOf(r.resourceKind) === -1) r.resourceKind = 'Link';
+    } else {
+      r.resourceKind = '';
+    }
   }
 }
 

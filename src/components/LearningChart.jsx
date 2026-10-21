@@ -1,18 +1,11 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Bar, BarChart, CartesianGrid, Cell, LabelList, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { BookOpen } from 'lucide-react';
-import { CATEGORIES, COLORS, categoryColor } from '../lib/constants';
-import { startOfWeek } from '../lib/dates';
-import { round1 } from '../lib/model';
-import { useData, useIsNarrow, useToday } from '../context/DataContext';
+import { Layers } from 'lucide-react';
+import { COLORS } from '../lib/constants';
+import { TOPIC_STATUSES, TOPIC_STATUS_STYLE, categoriesOf, childrenOf, colorOf, summarize, topicsOfCategory } from '../lib/learning';
+import { useData, useIsNarrow } from '../context/DataContext';
 import { EmptyState, Segmented } from './ui';
-
-const METRICS = {
-  hours: { label: 'Hours', unit: 'h', title: 'Learning hours' },
-  progress: { label: 'Progress', unit: '%', title: 'Latest progress' },
-  sessions: { label: 'Sessions', unit: '', title: 'Sessions logged' }
-};
 
 function Tip({ active, payload }) {
   if (!active || !payload?.length) return null;
@@ -23,60 +16,42 @@ function Tip({ active, payload }) {
         <span className="dot" style={{ background: r.color }} /> {r.name}
       </div>
       <div className="chart-tip-row">
-        Hours <b>{round1(r.hours)}h</b>
+        Completed <b>{r.pct}%</b>
       </div>
+      {TOPIC_STATUSES.map((s) => (
+        <div key={s} className="chart-tip-row">
+          <span className="dot" style={{ background: TOPIC_STATUS_STYLE[s].dot }} />
+          {s} <b>{r[s]}</b>
+        </div>
+      ))}
       <div className="chart-tip-row">
-        Sessions <b>{r.sessions}</b>
-      </div>
-      <div className="chart-tip-row">
-        Latest progress <b>{r.progress}%</b>
-      </div>
-      <div className="chart-tip-row">
-        Skill level <b>{r.skill || '—'}</b>
+        Technologies <b>{r.techs}</b>
       </div>
       <div className="chart-tip-hint">Click to open this category</div>
     </div>
   );
 }
 
+/** Learning progress per category: % of topics completed, or topics by status. */
 export default function LearningChart() {
   const { learning, loaded } = useData();
-  const today = useToday();
   const navigate = useNavigate();
   const narrow = useIsNarrow(640);
-  const [metric, setMetric] = useState('hours');
-  const [range, setRange] = useState('all');
+  const [view, setView] = useState('progress');
 
-  const { data, totalHours, sessions } = useMemo(() => {
-    const from = range === 'week' ? startOfWeek(today) : range === 'month' ? `${today.slice(0, 7)}-01` : '';
-    const inRange = learning.filter((l) => l.date && (!from || (l.date >= from && l.date <= today)));
-    const cats = [...CATEGORIES, ...[...new Set(learning.map((l) => l.category))].filter((c) => !CATEGORIES.includes(c)).sort()];
-
-    const rows = cats.map((cat) => {
-      const ranged = inRange.filter((l) => l.category === cat);
-      // Progress & skill = most recent entry for the category (all time)
-      const latest = learning
-        .filter((l) => l.category === cat)
-        .sort((a, b) => (b.date + b.createdAt).localeCompare(a.date + a.createdAt))[0];
-      return {
-        name: cat,
-        color: categoryColor(cat),
-        hours: round1(ranged.reduce((s, l) => s + l.hours, 0)),
-        sessions: ranged.length,
-        progress: latest ? latest.progress : 0,
-        skill: latest?.skillLevel
-      };
+  const { data, totals } = useMemo(() => {
+    const rows = categoriesOf(learning).map((c) => {
+      const s = summarize(topicsOfCategory(learning, c.id));
+      return { id: c.id, name: c.title, color: colorOf(c), pct: s.pct, total: s.total, techs: childrenOf(learning, c.id, 'technology').length, ...s.counts };
     });
-    return {
-      data: rows,
-      totalHours: round1(inRange.reduce((s, l) => s + l.hours, 0)),
-      sessions: inRange.length
-    };
-  }, [learning, range, today]);
+    const all = summarize(learning.filter((x) => x.type === 'topic'));
+    return { data: rows, totals: all };
+  }, [learning]);
 
-  const top = [...data].sort((a, b) => b.hours - a.hours)[0];
-  const m = METRICS[metric];
-  const rangeLabel = range === 'week' ? 'this week' : range === 'month' ? 'this month' : 'all time';
+  const open = (e) => {
+    const id = e?.payload?.id || e?.id;
+    if (id) navigate(`/learning?cat=${id}`);
+  };
 
   return (
     <section className="chart-card clay">
@@ -84,48 +59,42 @@ export default function LearningChart() {
         <div>
           <h3>Learning progress</h3>
           <p className="muted">
-            <b className="c-purple">{totalHours}h</b> across {sessions} {sessions === 1 ? 'session' : 'sessions'} {rangeLabel}
-            {top && top.hours > 0 && (
-              <>
-                {' '}
-                · top: <b style={{ color: top.color }}>{top.name}</b>
-              </>
-            )}
+            <b className="c-mint">{totals.done}</b> of {totals.total} topics completed · <b className="c-purple">{totals.active}</b> in progress · {totals.pct}%
           </p>
         </div>
         <Segmented
           size="sm"
-          value={metric}
-          onChange={setMetric}
-          ariaLabel="Learning metric"
-          options={Object.entries(METRICS).map(([value, v]) => ({ value, label: v.label }))}
+          value={view}
+          onChange={setView}
+          ariaLabel="Learning chart view"
+          options={[
+            { value: 'progress', label: 'Progress' },
+            { value: 'status', label: 'Status' }
+          ]}
         />
       </div>
 
       <div className="chart-sub">
-        {metric === 'progress' ? (
-          <span className="muted small">Latest recorded progress per category</span>
+        {view === 'progress' ? (
+          <span className="muted small">% of topics completed in each category</span>
         ) : (
-          <Segmented
-            size="sm"
-            value={range}
-            onChange={setRange}
-            ariaLabel="Date range"
-            options={[
-              { value: 'week', label: 'This week' },
-              { value: 'month', label: 'This month' },
-              { value: 'all', label: 'All time' }
-            ]}
-          />
+          <div className="legend">
+            {TOPIC_STATUSES.map((s) => (
+              <span key={s} className="legend-item">
+                <span className="dot" style={{ background: TOPIC_STATUS_STYLE[s].dot }} />
+                {s}
+              </span>
+            ))}
+          </div>
         )}
       </div>
 
       <div className="chart-body">
-        {!loaded || learning.length === 0 ? (
+        {!loaded || data.length === 0 ? (
           <EmptyState
-            icon={<BookOpen size={26} />}
-            title={loaded ? 'No learning logged yet' : 'Waiting for data'}
-            text={loaded ? 'Log a learning session and your hours appear here by category.' : 'Connect your Google Sheet in Settings to see live progress.'}
+            icon={<Layers size={26} />}
+            title={loaded ? 'No learning board yet' : 'Waiting for data'}
+            text={loaded ? 'Add categories, technologies and topics on the Learning page — progress shows up here.' : 'Connect your Google Sheet in Settings to see live progress.'}
           />
         ) : (
           <ResponsiveContainer width="100%" height={270}>
@@ -142,33 +111,37 @@ export default function LearningChart() {
                 tick={{ fontSize: narrow ? 10.5 : 11.5, fill: COLORS.muted, fontWeight: 600 }}
               />
               <YAxis
-                allowDecimals={metric !== 'sessions'}
-                domain={metric === 'progress' ? [0, 100] : [0, 'auto']}
+                allowDecimals={false}
+                domain={view === 'progress' ? [0, 100] : [0, 'auto']}
                 tickLine={false}
                 axisLine={false}
                 tick={{ fontSize: 12, fill: COLORS.muted }}
-                tickFormatter={(v) => `${v}${m.unit}`}
+                tickFormatter={(v) => (view === 'progress' ? `${v}%` : v)}
               />
               <Tooltip content={<Tip />} cursor={{ fill: 'rgba(157,141,241,0.10)', radius: 12 }} />
-              <Bar
-                dataKey={metric}
-                name={m.title}
-                radius={[12, 12, 6, 6]}
-                maxBarSize={48}
-                cursor="pointer"
-                onClick={(e) => navigate(`/learning?category=${encodeURIComponent(e?.payload?.name || e?.name)}`)}
-                animationDuration={600}
-              >
-                {data.map((d) => (
-                  <Cell key={d.name} fill={d.color} />
-                ))}
-                <LabelList
-                  dataKey={metric}
-                  position="top"
-                  formatter={(v) => (v ? `${v}${m.unit}` : '')}
-                  style={{ fontSize: 11, fontWeight: 700, fill: COLORS.charcoal }}
-                />
-              </Bar>
+              {view === 'progress' ? (
+                <Bar dataKey="pct" name="Completed" radius={[12, 12, 6, 6]} maxBarSize={48} cursor="pointer" onClick={open} animationDuration={600}>
+                  {data.map((d) => (
+                    <Cell key={d.id} fill={d.color} />
+                  ))}
+                  <LabelList dataKey="pct" position="top" formatter={(v) => `${v}%`} style={{ fontSize: 11, fontWeight: 700, fill: COLORS.charcoal }} />
+                </Bar>
+              ) : (
+                [...TOPIC_STATUSES].reverse().map((s, i) => (
+                  <Bar
+                    key={s}
+                    dataKey={s}
+                    name={s}
+                    stackId="t"
+                    fill={TOPIC_STATUS_STYLE[s].dot}
+                    radius={i === TOPIC_STATUSES.length - 1 ? [10, 10, 4, 4] : [0, 0, 0, 0]}
+                    maxBarSize={46}
+                    cursor="pointer"
+                    onClick={open}
+                    animationDuration={600}
+                  />
+                ))
+              )}
             </BarChart>
           </ResponsiveContainer>
         )}

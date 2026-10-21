@@ -1,269 +1,391 @@
 import { useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { BookOpen, Flame, Plus, Search, Timer, TrendingUp, X } from 'lucide-react';
-import { CATEGORIES, SKILL_LEVELS, categoryColor } from '../lib/constants';
-import { addDays, fmt, fmtLong, relativeLabel, startOfWeek } from '../lib/dates';
-import { round1 } from '../lib/model';
-import { useData, useToday } from '../context/DataContext';
-import LearningForm from '../components/LearningForm';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { ArrowRight, Download, Eye, EyeOff, FolderPlus, GripVertical, Layers, Library, Pencil, Plus, Search, Sparkles, Target, Trash2, Trophy, Flame } from 'lucide-react';
+import { useData } from '../context/DataContext';
+import { DEFAULT_CATEGORIES, categoriesOf, childrenOf, colorOf, summarize, topicsOfCategory, topicsOfTech } from '../lib/learning';
+import { startOfWeek, toKey } from '../lib/dates';
+import { useToday } from '../context/DataContext';
 import ConnectCard from '../components/ConnectCard';
-import { EmptyState, PageHeader, ProgressBar } from '../components/ui';
+import { EmptyState, PageHeader, Spinner } from '../components/ui';
+import { Bar, MenuButton, QuickAdd } from '../components/learning/Bits';
+import { useEditor } from '../components/learning/Editor';
+import { SortableItem, SortableList, justDragged } from '../components/learning/Sortable';
+import TopicCard from '../components/learning/TopicCard';
 
-const LEVEL_INDEX = Object.fromEntries(SKILL_LEVELS.map((l, i) => [l, i]));
-const latestFirst = (a, b) => (b.date + b.createdAt).localeCompare(a.date + a.createdAt);
+const FILTERS = [
+  { value: 'all', label: 'All' },
+  { value: 'active', label: 'In progress' },
+  { value: 'todo', label: 'To learn' },
+  { value: 'done', label: 'Completed' }
+];
+const matchesFilter = (t, f) =>
+  f === 'all' || (f === 'active' && (t.status === 'Learning' || t.status === 'Practicing')) || (f === 'todo' && t.status === 'Not Started') || (f === 'done' && t.status === 'Completed');
 
-function LevelMeter({ level }) {
-  const idx = LEVEL_INDEX[level] ?? -1;
-  return (
-    <span className="level-meter" title={level || 'No level yet'}>
-      {SKILL_LEVELS.map((l, i) => (
-        <i key={l} className={i <= idx ? 'on' : ''} />
-      ))}
-    </span>
-  );
-}
+/** Stops a click that ends a drag from also opening the tab/column. */
+const guard = (fn) => (e) => !justDragged() && fn(e);
 
 export default function Learning() {
-  const { learning, configured, loaded } = useData();
+  const { learning, configured, loaded, loading, learningReady, addLearning, reorderLearning, seedDefaultCategories, importLegacy } = useData();
+  const { openEditor } = useEditor();
+  const navigate = useNavigate();
   const today = useToday();
   const [params, setParams] = useSearchParams();
-  const activeCat = params.get('category') || '';
   const [q, setQ] = useState('');
-  const [form, setForm] = useState({ open: false, entry: null });
+  const [filter, setFilter] = useState('all');
+  const [expanded, setExpanded] = useState({});
+  const [busy, setBusy] = useState(false);
 
-  const setCat = (cat) => {
-    const next = new URLSearchParams(params);
-    if (cat) next.set('category', cat);
-    else next.delete('category');
-    setParams(next, { replace: true });
-  };
+  const cats = useMemo(() => categoriesOf(learning), [learning]);
+  const legacy = useMemo(() => learning.filter((x) => !x.type), [learning]);
+  const activeId = cats.some((c) => c.id === params.get('cat')) ? params.get('cat') : cats[0]?.id;
+  const active = cats.find((c) => c.id === activeId);
+  const techs = useMemo(() => (active ? childrenOf(learning, active.id, 'technology') : []), [learning, active]);
 
-  const cats = useMemo(
-    () => [...CATEGORIES, ...[...new Set(learning.map((l) => l.category))].filter((c) => !CATEGORIES.includes(c)).sort()],
-    [learning]
-  );
-
-  const catStats = useMemo(
-    () =>
-      cats.map((cat) => {
-        const list = learning.filter((l) => l.category === cat);
-        const latest = [...list].sort(latestFirst)[0];
-        return {
-          cat,
-          color: categoryColor(cat),
-          hours: round1(list.reduce((s, l) => s + l.hours, 0)),
-          sessions: list.length,
-          progress: latest?.progress ?? 0,
-          level: latest?.skillLevel,
-          lastDate: latest?.date
-        };
-      }),
-    [cats, learning]
-  );
-
-  const summary = useMemo(() => {
-    const byDay = {};
-    learning.forEach((l) => {
-      byDay[l.date] = (byDay[l.date] || 0) + l.hours;
-    });
-    const last14 = Array.from({ length: 14 }, (_, i) => {
-      const k = addDays(today, i - 13);
-      return { key: k, hours: round1(byDay[k] || 0) };
-    });
-    // streak: consecutive days with learning ending today (or yesterday if nothing yet today)
-    let streak = 0;
-    let k = byDay[today] ? today : addDays(today, -1);
-    while (byDay[k] > 0) {
-      streak += 1;
-      k = addDays(k, -1);
-    }
-    const total = round1(learning.reduce((s, l) => s + l.hours, 0));
+  const overall = useMemo(() => {
+    const topics = learning.filter((x) => x.type === 'topic');
+    const s = summarize(topics);
     const weekStart = startOfWeek(today);
-    const week = round1(learning.filter((l) => l.date >= weekStart && l.date <= today).reduce((s, l) => s + l.hours, 0));
-    const activeDays = Object.keys(byDay).filter((d) => byDay[d] > 0).length;
-    return { last14, streak, total, week, avg: activeDays ? round1(total / activeDays) : 0, max14: Math.max(1, ...last14.map((d) => d.hours)) };
+    const week = topics.filter((t) => t.status === 'Completed' && t.completedAt && toKey(new Date(t.completedAt)) >= weekStart).length;
+    return { ...s, week, resources: learning.filter((x) => x.type === 'resource').length };
   }, [learning, today]);
 
-  const entries = useMemo(() => {
-    const term = q.trim().toLowerCase();
-    const list = learning
-      .filter((l) => (!activeCat || l.category === activeCat) && (!term || `${l.topic} ${l.notes} ${l.category}`.toLowerCase().includes(term)))
-      .sort(latestFirst);
-    const groups = [];
-    list.forEach((l) => {
-      const g = groups[groups.length - 1];
-      if (g && g.date === l.date) g.items.push(l);
-      else groups.push({ date: l.date, items: [l] });
-    });
-    return groups;
-  }, [learning, activeCat, q]);
+  const setCat = (id) => {
+    const next = new URLSearchParams(params);
+    next.set('cat', id);
+    setParams(next, { replace: true });
+  };
+  const toggle = (id) => setExpanded((e) => ({ ...e, [id]: !e[id] }));
+  const term = q.trim().toLowerCase();
+  const filtering = Boolean(term) || filter !== 'all';
+  const visibleTopics = (techId) =>
+    topicsOfTech(learning, techId).filter(
+      (t) => matchesFilter(t, filter) && (!term || `${t.title} ${t.notes} ${t.takeaways} ${t.evidence}`.toLowerCase().includes(term))
+    );
+
+  const run = async (fn) => {
+    setBusy(true);
+    try {
+      await fn();
+    } catch {
+      /* toast shown */
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /* ---------- states before the board ---------- */
+  let body = null;
+  if (!configured) body = <ConnectCard />;
+  else if (loading && !loaded)
+    body = (
+      <div className="center-pad">
+        <Spinner size={24} />
+      </div>
+    );
+  else if (loaded && !learningReady) body = <UpgradeNotice />;
+  else if (loaded && cats.length === 0)
+    body = (
+      <section className="card clay lboard-empty">
+        <EmptyState
+          icon={<Layers size={28} />}
+          title="Build your learning board"
+          text={`Start with ${DEFAULT_CATEGORIES.join(', ')} — then add technologies (React, Node.js, MySQL…) and the topics inside them.`}
+          action={
+            <div className="empty-actions">
+              <button className="btn btn-primary" disabled={busy} onClick={() => run(seedDefaultCategories)}>
+                {busy ? <Spinner size={16} /> : <Sparkles size={16} />} Add the 6 default categories
+              </button>
+              <button className="btn btn-soft" onClick={() => openEditor('category')}>
+                <FolderPlus size={16} /> Create my own
+              </button>
+            </div>
+          }
+        />
+      </section>
+    );
 
   return (
-    <div className="page">
+    <div className="page learning-page">
       <PageHeader
         eyebrow="Learning tracker"
-        title="Grow your skills"
-        subtitle="Log study sessions by category, track hours, progress and skill level."
+        title="Learning board"
+        subtitle="Category → technology → topics. Learn it, practise it, prove it, tick it off."
         actions={
-          <button className="btn btn-primary" onClick={() => setForm({ open: true, entry: null })} disabled={!configured}>
-            <Plus size={18} /> Log learning
-          </button>
+          learningReady &&
+          cats.length > 0 && (
+            <>
+              <button className="btn btn-soft" onClick={() => openEditor('category')}>
+                <FolderPlus size={18} /> Category
+              </button>
+              <button className="btn btn-primary" onClick={() => (techs[0] ? openEditor('topic', { parentId: techs[0].id }) : openEditor('technology', { parentId: activeId }))}>
+                <Plus size={18} /> {techs[0] ? 'Topic' : 'Technology'}
+              </button>
+            </>
+          )
         }
       />
 
-      {!configured && <ConnectCard />}
-
-      <div className="cat-grid">
-        {catStats.map((c) => (
-          <button
-            key={c.cat}
-            className={`cat-card clay ${activeCat === c.cat ? 'active' : ''}`}
-            style={{ '--cat': c.color }}
-            onClick={() => setCat(activeCat === c.cat ? '' : c.cat)}
-            aria-pressed={activeCat === c.cat}
-          >
-            <div className="cat-card-top">
-              <span className="cat-badge">{c.cat.slice(0, 2)}</span>
-              <LevelMeter level={c.level} />
-            </div>
-            <div className="cat-name">{c.cat}</div>
-            <div className="cat-hours">
-              {c.hours}
-              <small>h</small>
-            </div>
-            <div className="cat-meta">
-              {c.sessions} session{c.sessions === 1 ? '' : 's'} · {c.level || 'Not started'}
-            </div>
-            <ProgressBar value={c.progress} color={c.color} height={8} />
-            <div className="cat-foot">
-              <span>{c.progress}% progress</span>
-              <span>{c.lastDate ? relativeLabel(c.lastDate, today) : '—'}</span>
-            </div>
+      {learningReady && legacy.length > 0 && (
+        <section className="legacy-banner clay">
+          <Download size={20} />
+          <div className="grow">
+            <strong>
+              {legacy.length} entr{legacy.length === 1 ? 'y' : 'ies'} from your old learning log
+            </strong>
+            <p>Import them as topics (grouped under each category → “General”). Rows stay in your sheet; hours are no longer tracked.</p>
+          </div>
+          <button className="btn btn-primary btn-sm" disabled={busy} onClick={() => run(importLegacy)}>
+            {busy ? <Spinner size={14} /> : null} Import as topics
           </button>
-        ))}
-      </div>
-
-      <div className="learn-summary">
-        <section className="card clay">
-          <div className="card-head">
-            <h3>Daily progress</h3>
-            <span className="muted small">Hours per day · last 14 days</span>
-          </div>
-          <div className="day-bars">
-            {summary.last14.map((d) => (
-              <div key={d.key} className={`day-bar ${d.key === today ? 'is-today' : ''}`} title={`${fmtLong(d.key)} · ${d.hours}h`}>
-                <span className="day-bar-val">{d.hours ? `${d.hours}h` : ''}</span>
-                <div className="day-bar-track">
-                  <div className="day-bar-fill" style={{ height: `${(d.hours / summary.max14) * 100}%` }} />
-                </div>
-                <span className="day-bar-label">{fmt(d.key, { weekday: 'narrow' })}</span>
-              </div>
-            ))}
-          </div>
         </section>
-        <div className="mini-stats">
-          <div className="stat clay tone-purple">
-            <div className="stat-icon">
-              <Timer size={20} />
-            </div>
-            <div className="stat-value">{summary.total}h</div>
-            <div className="stat-label">Total learned</div>
-          </div>
-          <div className="stat clay tone-coral">
-            <div className="stat-icon">
-              <Flame size={20} />
-            </div>
-            <div className="stat-value">{summary.streak}</div>
-            <div className="stat-label">Day streak</div>
-          </div>
-          <div className="stat clay tone-yellow">
-            <div className="stat-icon">
-              <TrendingUp size={20} />
-            </div>
-            <div className="stat-value">{summary.week}h</div>
-            <div className="stat-label">This week</div>
-          </div>
-          <div className="stat clay tone-mint">
-            <div className="stat-icon">
-              <BookOpen size={20} />
-            </div>
-            <div className="stat-value">{summary.avg}h</div>
-            <div className="stat-label">Avg per active day</div>
-          </div>
-        </div>
-      </div>
+      )}
 
-      <section className="card clay">
-        <div className="card-head wrap">
-          <h3>
-            Learning log
-            {activeCat && (
-              <button className="filter-chip" style={{ '--cat': categoryColor(activeCat) }} onClick={() => setCat('')}>
-                {activeCat} <X size={12} />
-              </button>
-            )}
-          </h3>
-          <div className="search">
-            <Search size={16} />
-            <input className="input" placeholder="Search topics or notes…" value={q} onChange={(e) => setQ(e.target.value)} />
+      {body || (
+        <>
+          <div className="lstats">
+            <MiniStat icon={<Trophy size={18} />} tone="mint" value={`${overall.done}/${overall.total}`} label="Topics completed" sub={`${overall.pct}% overall`} />
+            <MiniStat icon={<Flame size={18} />} tone="coral" value={overall.active} label="In progress" sub="Learning + practising" />
+            <MiniStat icon={<Target size={18} />} tone="yellow" value={overall.week} label="Done this week" sub="Topics ticked off" />
+            <MiniStat icon={<Library size={18} />} tone="purple" value={overall.resources} label="Resources saved" sub="Repos, docs & links" />
           </div>
-        </div>
 
-        {entries.length === 0 ? (
-          <EmptyState
-            icon={<BookOpen size={26} />}
-            title={learning.length ? 'Nothing matches' : 'No sessions yet'}
-            text={
-              learning.length
-                ? 'Try another category or search term.'
-                : loaded
-                  ? 'Log what you learned today — it is saved to your Learning sheet.'
-                  : 'Connect your sheet to load your learning history.'
-            }
-            action={
-              configured && (
-                <button className="btn btn-soft btn-sm" onClick={() => setForm({ open: true, entry: null })}>
-                  <Plus size={16} /> Log a session
-                </button>
-              )
-            }
-          />
-        ) : (
-          entries.map((g) => (
-            <div key={g.date} className="list-group">
-              <div className="list-group-head">
-                {relativeLabel(g.date, today)} <em>{fmtLong(g.date)}</em>
-                <span>{round1(g.items.reduce((s, l) => s + l.hours, 0))}h</span>
+          {/* Category tabs */}
+          <nav className="cat-tabs" aria-label="Categories">
+            <SortableList ids={cats.map((c) => c.id)} onReorder={reorderLearning} horizontal disabled={!learningReady}>
+              {cats.map((c) => {
+                const s = summarize(topicsOfCategory(learning, c.id));
+                return (
+                  <SortableItem key={c.id} id={c.id} disabled={c._pending}>
+                    {({ ref, style, dragProps, isDragging }) => (
+                      <button
+                        ref={ref}
+                        style={{ ...style, '--cat': colorOf(c) }}
+                        {...dragProps}
+                        className={`cat-tab ${c.id === activeId ? 'active' : ''} ${isDragging ? 'dragging' : ''}`}
+                        onClick={guard(() => setCat(c.id))}
+                        aria-current={c.id === activeId ? 'page' : undefined}
+                      >
+                        <span className="cat-tab-top">
+                          <span className="cat-dot" />
+                          <span className="cat-tab-name">{c.title}</span>
+                          <span className="cat-tab-pct">{s.pct}%</span>
+                        </span>
+                        <Bar value={s.pct} color={colorOf(c)} height={5} />
+                        <span className="cat-tab-sub">
+                          {s.done}/{s.total} topics
+                        </span>
+                      </button>
+                    )}
+                  </SortableItem>
+                );
+              })}
+            </SortableList>
+            <button className="cat-tab cat-tab-add" onClick={() => openEditor('category')}>
+              <Plus size={16} /> Category
+            </button>
+          </nav>
+
+          {active && (
+            <CategoryHeader
+              cat={active}
+              techs={techs}
+              onEdit={() => openEditor('category', { item: active })}
+              onAddTech={() => openEditor('technology', { parentId: active.id })}
+            />
+          )}
+
+          {active && techs.length > 0 && (
+            <div className="board-tools">
+              <div className="search">
+                <Search size={16} />
+                <input className="input" placeholder="Search topics, notes, takeaways…" value={q} onChange={(e) => setQ(e.target.value)} />
               </div>
-              <div className="list-rows">
-                {g.items.map((l) => (
-                  <button
-                    key={l.id}
-                    className={`list-row clay-soft ${l._pending ? 'is-busy' : ''}`}
-                    onClick={() => !l._pending && setForm({ open: true, entry: l })}
-                  >
-                    <span className="lr-bar" style={{ background: categoryColor(l.category) }} />
-                    <span className="lr-main">
-                      <span className="lr-title">{l.topic}</span>
-                      <span className="lr-sub">
-                        {l.category} · {l.skillLevel}
-                        {l.notes && ` · ${l.notes.slice(0, 90)}${l.notes.length > 90 ? '…' : ''}`}
-                      </span>
-                    </span>
-                    <span className="lr-progress">
-                      <ProgressBar value={l.progress} color={categoryColor(l.category)} height={6} />
-                      <small>{l.progress}%</small>
-                    </span>
-                    <span className="lr-hours">{round1(l.hours)}h</span>
+              <div className="seg seg-sm" role="tablist" aria-label="Filter topics">
+                {FILTERS.map((f) => (
+                  <button key={f.value} type="button" role="tab" aria-selected={filter === f.value} className={filter === f.value ? 'active' : ''} onClick={() => setFilter(f.value)}>
+                    {f.label}
                   </button>
                 ))}
               </div>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => setExpanded((e) => (Object.values(e).some(Boolean) ? {} : Object.fromEntries(techs.flatMap((t) => topicsOfTech(learning, t.id)).map((t) => [t.id, true]))))}
+              >
+                {Object.values(expanded).some(Boolean) ? <EyeOff size={15} /> : <Eye size={15} />}
+                {Object.values(expanded).some(Boolean) ? 'Collapse all' : 'Expand all'}
+              </button>
             </div>
-          ))
-        )}
-      </section>
+          )}
 
-      <LearningForm open={form.open} entry={form.entry} defaultCategory={activeCat || undefined} onClose={() => setForm({ open: false, entry: null })} />
+          {active && (
+            <div className="board" style={{ '--cat': colorOf(active) }}>
+              <SortableList ids={techs.map((t) => t.id)} onReorder={reorderLearning} horizontal disabled={!learningReady}>
+                {techs.map((t) => (
+                  <TechColumn
+                    key={t.id}
+                    tech={t}
+                    topics={visibleTopics(t.id)}
+                    allCount={topicsOfTech(learning, t.id).length}
+                    filtering={filtering}
+                    expanded={expanded}
+                    onToggle={toggle}
+                    onOpen={() => navigate(`/learning/tech/${t.id}`)}
+                    onEdit={() => openEditor('technology', { item: t })}
+                    onAddTopic={(title) => addLearning({ type: 'topic', parentId: t.id, title, status: 'Not Started' }).catch(() => {})}
+                    onReorder={reorderLearning}
+                    resources={childrenOf(learning, t.id, 'resource').length}
+                    color={colorOf(active)}
+                  />
+                ))}
+              </SortableList>
+              <div className="tech-col tech-col-new">
+                <QuickAdd
+                  label={techs.length ? 'Add technology' : 'Add your first technology'}
+                  placeholder="e.g. React, Node.js, Liquid…"
+                  onAdd={(title) => addLearning({ type: 'technology', parentId: active.id, title }).catch(() => {})}
+                />
+                {techs.length === 0 && <p className="muted small">Technologies become columns. Topics go inside them.</p>}
+              </div>
+            </div>
+          )}
+        </>
+      )}
     </div>
+  );
+}
+
+function MiniStat({ icon, value, label, sub, tone }) {
+  return (
+    <div className={`lstat clay tone-${tone}`}>
+      <div className="stat-icon">{icon}</div>
+      <div>
+        <div className="lstat-value">{value}</div>
+        <div className="lstat-label">{label}</div>
+        <div className="lstat-sub">{sub}</div>
+      </div>
+    </div>
+  );
+}
+
+function CategoryHeader({ cat, techs, onEdit, onAddTech }) {
+  const { learning } = useData();
+  const s = summarize(topicsOfCategory(learning, cat.id));
+  return (
+    <section className="cat-head clay" style={{ '--cat': colorOf(cat) }}>
+      <div className="cat-head-main">
+        <div className="cat-head-badge">{cat.title.slice(0, 2)}</div>
+        <div className="grow">
+          <h2>{cat.title}</h2>
+          <p className="muted small">
+            {techs.length} technolog{techs.length === 1 ? 'y' : 'ies'} · {s.total} topics · {s.active} in progress
+            {cat.notes ? ` · ${cat.notes}` : ''}
+          </p>
+        </div>
+        <div className="cat-head-actions">
+          <button className="btn btn-soft btn-sm" onClick={onAddTech}>
+            <Plus size={15} /> Technology
+          </button>
+          <MenuButton
+            label={`Actions for ${cat.title}`}
+            items={[
+              { label: 'Edit category', icon: <Pencil size={14} />, onClick: onEdit },
+              { label: 'Delete category…', icon: <Trash2 size={14} />, danger: true, onClick: onEdit } // opens the form: shows what else gets deleted
+            ]}
+          />
+        </div>
+      </div>
+      <div className="cat-head-progress">
+        <Bar value={s.pct} color={colorOf(cat)} height={12} />
+        <strong>{s.pct}%</strong>
+        <span className="muted small">
+          {s.done}/{s.total} completed
+        </span>
+      </div>
+    </section>
+  );
+}
+
+function TechColumn({ tech, topics, allCount, filtering, expanded, onToggle, onOpen, onEdit, onAddTopic, onReorder, resources, color }) {
+  const { learning, learningReady } = useData();
+  const s = summarize(topicsOfTech(learning, tech.id));
+  const busy = tech._pending || tech.id.startsWith('tmp-');
+  return (
+    <SortableItem id={tech.id} disabled={busy}>
+      {({ ref, style, dragProps, handleProps, isDragging }) => (
+        <section ref={ref} style={style} className={`tech-col clay ${isDragging ? 'dragging' : ''} ${busy ? 'is-busy' : ''}`} aria-label={tech.title}>
+          <header className="tech-col-head" {...dragProps}>
+            <div className="tech-col-title">
+              <span className="grip" {...handleProps} aria-label={`Reorder ${tech.title}`}>
+                <GripVertical size={15} />
+              </span>
+              <button className="tech-name" onClick={guard(onOpen)} title="Open technology view">
+                {tech.title}
+              </button>
+              <MenuButton
+                small
+                label={`Actions for ${tech.title}`}
+                items={[
+                  { label: 'Open technology view', icon: <ArrowRight size={14} />, onClick: onOpen },
+                  { label: 'Edit', icon: <Pencil size={14} />, onClick: onEdit },
+                  { label: 'Delete…', icon: <Trash2 size={14} />, danger: true, onClick: onEdit }
+                ]}
+              />
+            </div>
+            <div className="tech-col-progress">
+              <Bar value={s.pct} color={color} height={7} />
+              <span>{s.pct}%</span>
+            </div>
+            <div className="tech-col-meta">
+              <span>
+                {s.done}/{s.total} done
+              </span>
+              <button className="res-chip" onClick={guard(onOpen)}>
+                <Library size={12} /> {resources} resource{resources === 1 ? '' : 's'}
+              </button>
+            </div>
+          </header>
+
+          <div className="tech-col-body">
+            <SortableList ids={topics.map((t) => t.id)} onReorder={onReorder} disabled={filtering || !learningReady}>
+              {topics.map((t) => (
+                <TopicCard key={t.id} topic={t} expanded={Boolean(expanded[t.id])} onToggle={onToggle} sortDisabled={filtering} />
+              ))}
+            </SortableList>
+            {topics.length === 0 && <p className="col-empty">{filtering && allCount ? 'No topics match.' : 'No topics yet.'}</p>}
+          </div>
+          <div className="tech-col-foot">
+            <QuickAdd label="Add topic" placeholder="Topic name, then Enter" onAdd={onAddTopic} />
+            <Link className="link-btn" to={`/learning/tech/${tech.id}`}>
+              Open <ArrowRight size={13} />
+            </Link>
+          </div>
+        </section>
+      )}
+    </SortableItem>
+  );
+}
+
+function UpgradeNotice() {
+  return (
+    <section className="card clay upgrade-card">
+      <h3>One step to switch on the new Learning board</h3>
+      <p className="muted">
+        The Learning tab now stores categories, technologies, topics and resources. Your Google Apps Script needs the updated <code>Code.gs</code> before the app can save
+        this — until then nothing is written to your Learning sheet.
+      </p>
+      <ol className="steps">
+        <li>
+          Open your sheet → <b>Extensions → Apps Script</b>.
+        </li>
+        <li>
+          Replace everything in <code>Code.gs</code> with the new <code>apps-script/Code.gs</code> from the project folder → <b>Save</b>.
+        </li>
+        <li>
+          <b>Deploy → Manage deployments → ✏️ Edit → Version: New version → Deploy</b> (the URL stays the same).
+        </li>
+        <li>Come back here and press the refresh icon in the sidebar.</li>
+      </ol>
+    </section>
   );
 }

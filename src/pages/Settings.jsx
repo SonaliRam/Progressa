@@ -6,7 +6,7 @@ import { useData } from '../context/DataContext';
 import { Field, PageHeader, Spinner } from '../components/ui';
 
 const TASK_COLS = ['ID', 'Title', 'Description', 'Start Date', 'End Date', 'Status', 'Priority', 'Notes', 'Daily Log', 'Created At', 'Updated At', 'Completed At'];
-const LEARN_COLS = ['ID', 'Date', 'Category', 'Topic', 'Hours', 'Progress (%)', 'Skill Level', 'Notes', 'Created At', 'Updated At'];
+const LEARN_COLS = ['ID', 'Type', 'Parent ID', 'Order', 'Title', 'Status', 'Color', 'URL', 'Resource Kind', 'Notes', 'Key Takeaways', 'Practical Evidence', 'Created At', 'Updated At', 'Completed At'];
 
 export default function Settings() {
   const { apiUrl, connect, configured, tasks, learning, lastSync, error } = useData();

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { dailyLogForEdit, dailyStatusFor, isMultiDay } from '../lib/model';
 import { PRIORITIES, TASK_STATUSES, STATUS_STYLE, PRIORITY_STYLE } from '../lib/constants';
 import { diffDays, isValidKey, todayKey } from '../lib/dates';
 import { useData } from '../context/DataContext';
@@ -21,12 +22,27 @@ export default function TaskForm({ open, onClose, task, defaultDate }) {
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
 
+  // Fill the form when it opens (or a different task is opened). Background syncs of the
+  // same task don't reset what you are typing.
   useEffect(() => {
     if (!open) return;
-    setForm(task ? { ...blank(), ...task } : blank(defaultDate));
+    setForm(
+      task
+        ? {
+            title: task.title,
+            description: task.description,
+            startDate: task.startDate,
+            endDate: task.endDate,
+            status: task.status,
+            priority: task.priority,
+            notes: task.notes
+          }
+        : blank(defaultDate)
+    );
     setErrors({});
     setSaving(false);
-  }, [open, task, defaultDate]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, task?.id, defaultDate]);
 
   const set = (k) => (e) => {
     const v = e?.target ? e.target.value : e;
@@ -52,7 +68,17 @@ export default function TaskForm({ open, onClose, task, defaultDate }) {
     ev.preventDefault();
     if (!validate()) return;
     setSaving(true);
-    const data = { ...form, title: form.title.trim() };
+    // Only the fields this form edits — never stale copies of other columns.
+    const data = {
+      title: form.title.trim(),
+      description: form.description.trim(),
+      startDate: form.startDate,
+      endDate: form.endDate,
+      status: form.status,
+      priority: form.priority,
+      notes: form.notes.trim(),
+      dailyLog: dailyLogForEdit(editing ? task : null, form, todayKey())
+    };
     try {
       if (editing) await updateTask(task.id, data);
       else await addTask(data);
@@ -72,6 +98,8 @@ export default function TaskForm({ open, onClose, task, defaultDate }) {
     }
   };
 
+  const today = todayKey();
+  const todayStatus = editing && isMultiDay(task) && today >= task.startDate && today <= task.endDate ? dailyStatusFor(task, today) : null;
   const span = isValidKey(form.startDate) && isValidKey(form.endDate) ? diffDays(form.startDate, form.endDate) + 1 : 1;
 
   return (
@@ -122,7 +150,15 @@ export default function TaskForm({ open, onClose, task, defaultDate }) {
           />
         </Field>
 
-        <Field label="Status" full>
+        <Field
+          label="Status"
+          full
+          hint={
+            span > 1
+              ? `Status of the whole task.${todayStatus ? ` Today it is marked “${todayStatus}”.` : ''} Change a single day from the task row.`
+              : undefined
+          }
+        >
           <Segmented
             value={form.status}
             onChange={set('status')}

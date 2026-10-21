@@ -21,14 +21,21 @@ function writeLS(key, value) {
   }
 }
 
+// Stored when the user presses Disconnect, so a URL in .env doesn't silently reconnect.
+const DISCONNECTED = 'off';
+
 export function getApiUrl() {
-  return (readLS(URL_KEY) || import.meta.env.VITE_GAS_URL || '').trim();
+  const saved = readLS(URL_KEY);
+  if (saved === DISCONNECTED) return '';
+  return (saved || import.meta.env.VITE_GAS_URL || '').trim();
 }
 export function getApiKey() {
+  if (readLS(URL_KEY) === DISCONNECTED) return '';
   return (readLS(API_KEY_KEY) || import.meta.env.VITE_GAS_KEY || '').trim();
 }
 export function saveConnection(url, key) {
-  writeLS(URL_KEY, (url || '').trim());
+  const u = (url || '').trim();
+  writeLS(URL_KEY, u || (import.meta.env.VITE_GAS_URL ? DISCONNECTED : ''));
   writeLS(API_KEY_KEY, (key || '').trim());
 }
 
@@ -75,5 +82,7 @@ export const api = {
   getAll: () => call({ action: 'getAll' }),
   create: (sheet, data) => call({ action: 'create', sheet, data }),
   update: (sheet, id, data) => call({ action: 'update', sheet, id, data }),
-  remove: (sheet, id) => call({ action: 'delete', sheet, id })
+  remove: (sheet, id) => call({ action: 'delete', sheet, id }),
+  /** ops: [{ action: 'create'|'update'|'delete', sheet, id?, data? }] — run in one request. */
+  batch: (ops) => call({ action: 'batch', ops })
 };

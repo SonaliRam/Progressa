@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Ban, Check, Clock3, StickyNote } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Ban, Check, ChevronDown, Clock3, StickyNote } from 'lucide-react';
 import { STATUS_STYLE, TASK_STATUSES } from '../lib/constants';
 import { diffDays, fmt } from '../lib/dates';
 import { dailyStatusFor, dailyStatusPatch, dayNoteFor, dayNotePatch, isMultiDay } from '../lib/model';
@@ -8,29 +8,78 @@ import { PriorityTag } from './ui';
 
 const ICONS = { 'In Progress': Clock3, Completed: Check, Blocked: Ban };
 
-export function StatusSwitch({ value, onChange, disabled }) {
+/** Shows only the current status; click it to pick a different one. */
+export function StatusSwitch({ value, onChange, disabled, onOpenChange }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  const current = STATUS_STYLE[value] ? value : 'In Progress';
+  const Icon = ICONS[current];
+  const style = STATUS_STYLE[current];
+
+  useEffect(() => onOpenChange?.(open), [open, onOpenChange]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onDown = (e) => ref.current && !ref.current.contains(e.target) && setOpen(false);
+    const onKey = (e) => e.key === 'Escape' && setOpen(false);
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('touchstart', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('touchstart', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  const pick = (s) => {
+    setOpen(false);
+    if (s !== current) onChange(s);
+  };
+
   return (
-    <div className="status-switch" role="radiogroup" aria-label="Status for this day">
-      {TASK_STATUSES.map((s) => {
-        const Icon = ICONS[s];
-        const active = value === s;
-        return (
-          <button
-            key={s}
-            type="button"
-            role="radio"
-            aria-checked={active}
-            disabled={disabled}
-            title={s}
-            className={active ? 'active' : ''}
-            style={active ? { background: STATUS_STYLE[s].bg, color: STATUS_STYLE[s].fg } : undefined}
-            onClick={() => !active && onChange(s)}
-          >
-            <Icon size={14} />
-            <span>{s}</span>
-          </button>
-        );
-      })}
+    <div className={`status-menu ${open ? 'open' : ''}`} ref={ref}>
+      <button
+        type="button"
+        className="status-current"
+        style={{ background: style.bg, color: style.fg }}
+        disabled={disabled}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-label={`Status: ${current}. Change status`}
+        title="Change status"
+        onClick={() => setOpen((o) => !o)}
+      >
+        <Icon size={14} />
+        <span className="status-label">{current}</span>
+        <ChevronDown size={14} className="status-chev" />
+      </button>
+
+      {open && (
+        <div className="status-options clay" role="listbox" aria-label="Status for this day">
+          {TASK_STATUSES.map((s) => {
+            const OptIcon = ICONS[s];
+            const active = s === current;
+            return (
+              <button
+                key={s}
+                type="button"
+                role="option"
+                aria-selected={active}
+                className={active ? 'active' : ''}
+                style={{ '--st-bg': STATUS_STYLE[s].bg, '--st-fg': STATUS_STYLE[s].fg }}
+                onClick={() => pick(s)}
+              >
+                <span className="status-opt-icon">
+                  <OptIcon size={14} />
+                </span>
+                <span>{s}</span>
+                {active && <Check size={14} className="status-opt-check" />}
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -44,6 +93,8 @@ export default function TaskRow({ task, dateKey, onOpen, showNote = false, showD
   const dayNo = diffDays(task.startDate, dateKey) + 1;
   const span = diffDays(task.startDate, task.endDate) + 1;
   const busy = task._pending || task.id.startsWith('tmp-');
+
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const storedNote = dayNoteFor(task, dateKey);
   const [note, setNote] = useState(storedNote);
@@ -72,7 +123,7 @@ export default function TaskRow({ task, dateKey, onOpen, showNote = false, showD
   };
 
   return (
-    <div className={`task-row clay-soft ${done ? 'is-done' : ''} ${busy ? 'is-busy' : ''}`}>
+    <div className={`task-row clay-soft ${done ? 'is-done' : ''} ${busy ? 'is-busy' : ''} ${menuOpen ? 'menu-open' : ''}`}>
       <button
         type="button"
         className={`check ${done ? 'checked' : ''}`}
@@ -106,7 +157,7 @@ export default function TaskRow({ task, dateKey, onOpen, showNote = false, showD
         {task.description && <div className="task-desc">{task.description}</div>}
       </div>
 
-      <StatusSwitch value={status} onChange={setStatus} disabled={busy} />
+      <StatusSwitch value={status} onChange={setStatus} disabled={busy} onOpenChange={setMenuOpen} />
 
       {showNote && (
         <input
