@@ -29,7 +29,7 @@ export default function Sidebar() {
         </div>
         <div className="brand-text">
           <strong>Progressaa</strong>
-          <span>Progress Over Perfection.</span>
+          <span>Rise Every Day.</span>
         </div>
       </div>
 
