@@ -48,15 +48,12 @@ export function EditorProvider({ children }) {
 /* ------------------------------------------------------------------ */
 
 function useSave(onClose) {
-  const [saving, setSaving] = useState(false);
-  const run = async (fn) => {
-    setSaving(true);
-    try {
-      await fn();
-      onClose();
-    } catch {
-      setSaving(false);
-    }
+  const [saving] = useState(false);
+  // Optimistic: the board updates instantly and the save runs in the background,
+  // so close right away instead of waiting for Google Sheets.
+  const run = (fn) => {
+    Promise.resolve().then(fn).catch(() => {});
+    onClose();
   };
   return [saving, run];
 }

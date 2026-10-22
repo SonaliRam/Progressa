@@ -92,7 +92,8 @@ export default function TaskRow({ task, dateKey, onOpen, showNote = false, showD
   const multi = isMultiDay(task);
   const dayNo = diffDays(task.startDate, dateKey) + 1;
   const span = diffDays(task.startDate, task.endDate) + 1;
-  const busy = task._pending || task.id.startsWith('tmp-');
+  // Saves run in the background queue, so the row stays usable while it is saving.
+  const busy = false;
 
   const [menuOpen, setMenuOpen] = useState(false);
 

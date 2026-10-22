@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { TextStyle } from '@tiptap/extension-text-style';
@@ -60,7 +60,7 @@ export default function RoughNotes() {
   const { toast, configured } = useData();
   const [notes, setNotes] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [saving] = useState(false);
   const [title, setTitle] = useState('');
   const [date, setDate] = useState(todayISO());
   const [color, setColor] = useState('yellow');
@@ -83,8 +83,22 @@ export default function RoughNotes() {
     onUpdate: ({ editor: ed }) => setIsEmpty(ed.isEmpty)
   });
 
+  // Optimistic saving: the board changes instantly, and saves run one at a time in the
+  // background (in order), so a slow Google Sheets reply never blocks the screen.
+  const queue = useRef(Promise.resolve());
+  const pending = useRef(0);
+  const idMap = useRef({}); // temporary id -> real sheet id
+  const realId = (id) => idMap.current[id] || id;
+  const enqueue = (job) => {
+    pending.current += 1;
+    const run = queue.current.then(job);
+    queue.current = run.catch(() => {});
+    return run.finally(() => { pending.current -= 1; });
+  };
+
   const load = useCallback(async () => {
     if (!configured) { setLoading(false); return; }
+    if (pending.current > 0) return; // don't overwrite changes that are still saving
     setLoading(true);
     try {
       setNotes((await api.listNotes()) || []);
@@ -102,27 +116,39 @@ export default function RoughNotes() {
     editor?.commands.clearContent(); setIsEmpty(true);
   };
 
-  const save = async () => {
+  const save = () => {
     if (!editor) return;
     if (editor.isEmpty && !title.trim()) { toast('Write something before saving', 'error'); return; }
     const data = { title: title.trim() || plain(editor.getHTML()).slice(0, 40) || 'Untitled', date, color, content: editor.getHTML() };
-    setSaving(true);
-    try {
-      if (editingId) {
-        const saved = await api.updateNote(editingId, data);
-        setNotes((n) => n.map((x) => (x.id === editingId ? saved : x)));
-        toast('Note updated');
-      } else {
+    const now = new Date().toISOString();
+
+    if (editingId) {
+      const id = realId(editingId);
+      const prev = notes.find((x) => x.id === id);
+      setNotes((n) => n.map((x) => (x.id === id ? { ...x, ...data, updatedAt: now } : x)));
+      toast('Note updated');
+      enqueue(() => api.updateNote(realId(id), data))
+        .then((saved) => setNotes((n) => n.map((x) => (x.id === realId(id) ? { ...x, ...saved } : x))))
+        .catch((e) => {
+          if (prev) setNotes((n) => n.map((x) => (x.id === realId(id) ? prev : x)));
+          toast(`Couldn't update note: ${e.message}`, 'error');
+        });
+    } else {
+      const tempId = `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+      setNotes((n) => [{ ...data, id: tempId, createdAt: now, updatedAt: now }, ...n]);
+      toast('Note saved');
+      enqueue(async () => {
         const saved = await api.createNote(data);
-        setNotes((n) => [saved, ...n]);
-        toast('Note saved');
-      }
-      resetEditor();
-    } catch (e) {
-      toast(`Couldn't save note: ${e.message}`, 'error');
-    } finally {
-      setSaving(false);
+        idMap.current[tempId] = saved.id; // later edits / deletes / pins use the real id
+        return saved;
+      })
+        .then((saved) => setNotes((n) => n.map((x) => (x.id === tempId ? { ...x, ...saved, pinned: x.pinned } : x))))
+        .catch((e) => {
+          setNotes((n) => n.filter((x) => x.id !== tempId));
+          toast(`Couldn't save note: ${e.message}`, 'error');
+        });
     }
+    resetEditor();
   };
 
   const startEdit = (note) => {
@@ -132,34 +158,36 @@ export default function RoughNotes() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const remove = async (note) => {
-    {
-      try {
-        await api.deleteNote(note.id);
-        setNotes((n) => n.filter((x) => x.id !== note.id));
-        setOpenNote(null);
-        if (editingId === note.id) resetEditor();
-        toast('Note deleted');
-      } catch (e) {
-        toast(`Couldn't delete note: ${e.message}`, 'error');
-      }
-    }
+  const remove = (note) => {
+    const id = realId(note.id);
+    const prev = notes.find((x) => x.id === id) || note;
+    setNotes((n) => n.filter((x) => x.id !== id));
+    setOpenNote(null);
+    if (editingId === note.id || editingId === id) resetEditor();
+    toast('Note deleted');
+    enqueue(() => api.deleteNote(realId(id))).catch((e) => {
+      setNotes((n) => (n.some((x) => x.id === prev.id) ? n : [prev, ...n]));
+      toast(`Couldn't delete note: ${e.message}`, 'error');
+    });
   };
 
-  const togglePin = async (note) => {
+  const togglePin = (note) => {
     const next = !isPinned(note);
     if (next && notes.filter(isPinned).length >= MAX_PINS) {
       toast(`You can pin up to ${MAX_PINS} notes. Unpin one first.`, 'error');
       return;
     }
-    try {
-      const saved = await api.updateNote(note.id, { pinned: next });
-      setNotes((n) => n.map((x) => (x.id === note.id ? { ...x, ...saved, pinned: next } : x)));
-      setOpenNote((o) => (o && o.id === note.id ? { ...o, pinned: next } : o));
-      toast(next ? 'Note pinned' : 'Note unpinned');
-    } catch (e) {
+    const id = realId(note.id);
+    const setPin = (v) => {
+      setNotes((n) => n.map((x) => (x.id === realId(id) ? { ...x, pinned: v } : x)));
+      setOpenNote((o) => (o && realId(o.id) === realId(id) ? { ...o, pinned: v } : o));
+    };
+    setPin(next);
+    toast(next ? 'Note pinned' : 'Note unpinned');
+    enqueue(() => api.updateNote(realId(id), { pinned: next })).catch((e) => {
+      setPin(!next);
       toast(`Couldn't update pin: ${e.message}`, 'error');
-    }
+    });
   };
 
   // Pinned notes shown separately at the top, newest first.

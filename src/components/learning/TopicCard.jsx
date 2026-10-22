@@ -15,7 +15,9 @@ export default function TopicCard({ topic, expanded, onToggle, sortDisabled, sho
   const { learning, updateLearning, deleteLearning, learningReady } = useData();
   const { openEditor } = useEditor();
   const done = topic.status === 'Completed';
-  const busy = topic._pending || topic.id.startsWith('tmp-');
+  // Stays usable while saving; only a brand-new topic (no sheet id yet) can't be dragged.
+  const busy = false;
+  const isNew = topic.id.startsWith('tmp-');
   const resources = childrenOf(learning, topic.id, 'resource');
   const takeaways = topic.takeaways
     .split('\n')
@@ -27,7 +29,7 @@ export default function TopicCard({ topic, expanded, onToggle, sortDisabled, sho
   const toggleDone = () => setStatus(done ? (topic.evidence ? 'Practicing' : 'Learning') : 'Completed');
 
   return (
-    <SortableItem id={topic.id} disabled={sortDisabled || !editable || busy}>
+    <SortableItem id={topic.id} disabled={sortDisabled || !editable || isNew}>
       {({ ref, style, dragProps, handleProps, isDragging }) => (
         <article
           ref={ref}

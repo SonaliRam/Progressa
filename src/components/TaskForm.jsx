@@ -79,23 +79,15 @@ export default function TaskForm({ open, onClose, task, defaultDate }) {
       notes: form.notes.trim(),
       dailyLog: dailyLogForEdit(editing ? task : null, form, todayKey())
     };
-    try {
-      if (editing) await updateTask(task.id, data);
-      else await addTask(data);
-      onClose();
-    } catch {
-      setSaving(false);
-    }
+    // Optimistic: the list updates instantly and the save runs in the background,
+    // so close right away instead of waiting for Google Sheets.
+    (editing ? updateTask(task.id, data) : addTask(data)).catch(() => {});
+    onClose();
   };
 
-  const remove = async () => {
-    setSaving(true);
-    try {
-      await deleteTask(task.id);
-      onClose();
-    } catch {
-      setSaving(false);
-    }
+  const remove = () => {
+    deleteTask(task.id).catch(() => {});
+    onClose();
   };
 
   const today = todayKey();
@@ -109,12 +101,12 @@ export default function TaskForm({ open, onClose, task, defaultDate }) {
       title={editing ? 'Edit task' : 'New task'}
       footer={
         <>
-          {editing && <ConfirmDelete onConfirm={remove} disabled={saving || task?._pending} />}
+          {editing && <ConfirmDelete onConfirm={remove} disabled={saving} />}
           <span className="grow" />
           <button type="button" className="btn btn-ghost" onClick={onClose}>
             Cancel
           </button>
-          <button type="submit" form="task-form" className="btn btn-primary" disabled={saving || task?._pending}>
+          <button type="submit" form="task-form" className="btn btn-primary" disabled={saving}>
             {saving && <Spinner size={16} />}
             {editing ? 'Save changes' : 'Add task'}
           </button>

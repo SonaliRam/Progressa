@@ -309,9 +309,10 @@ function CategoryHeader({ cat, techs, onEdit, onAddTech }) {
 function TechColumn({ tech, topics, allCount, filtering, expanded, onToggle, onOpen, onEdit, onAddTopic, onReorder, resources, color }) {
   const { learning, learningReady } = useData();
   const s = summarize(topicsOfTech(learning, tech.id));
-  const busy = tech._pending || tech.id.startsWith('tmp-');
+  // Stays usable while saving; only a brand-new column (no sheet id yet) can't be dragged.
+  const busy = false;
   return (
-    <SortableItem id={tech.id} disabled={busy}>
+    <SortableItem id={tech.id} disabled={tech.id.startsWith('tmp-')}>
       {({ ref, style, dragProps, handleProps, isDragging }) => (
         <section ref={ref} style={style} className={`tech-col clay ${isDragging ? 'dragging' : ''} ${busy ? 'is-busy' : ''}`} aria-label={tech.title}>
           <header className="tech-col-head" {...dragProps}>

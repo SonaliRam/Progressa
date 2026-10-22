@@ -37,9 +37,9 @@ export default function ResourceList({ parentId, variant = 'micro', readOnly = f
 
       <SortableList ids={list.map((r) => r.id)} onReorder={reorderLearning} disabled={!canEdit || kind !== 'All'}>
         {list.map((r) => (
-          <SortableItem key={r.id} id={r.id} disabled={!canEdit || kind !== 'All' || r._pending}>
+          <SortableItem key={r.id} id={r.id} disabled={!canEdit || kind !== 'All' || r.id.startsWith('tmp-')}>
             {({ ref, style, dragProps, handleProps, isDragging }) => (
-              <div ref={ref} style={style} className={`res-row ${isDragging ? 'dragging' : ''} ${r._pending ? 'is-busy' : ''}`} {...dragProps}>
+              <div ref={ref} style={style} className={`res-row ${isDragging ? 'dragging' : ''} `} {...dragProps}>
                 {canEdit && kind === 'All' && list.length > 1 && (
                   <span className="grip" {...handleProps} aria-label={`Reorder ${r.title}`}>
                     <GripVertical size={14} />
