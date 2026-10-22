@@ -1,15 +1,27 @@
 import { useState } from 'react';
-import { CheckCircle2, ExternalLink, Link2, PlugZap, Unplug, XCircle } from 'lucide-react';
+import { CheckCircle2, Hourglass, RotateCcw, Save, ExternalLink, Link2, PlugZap, Unplug, XCircle } from 'lucide-react';
 import { SHEET_URL } from '../lib/constants';
 import { api, getApiKey, looksLikeGasUrl } from '../lib/api';
 import { useData } from '../context/DataContext';
 import { Field, PageHeader, Spinner } from '../components/ui';
+import { COUNTDOWN_DEFAULTS, getCountdownSettings, saveCountdownSettings } from '../lib/countdown';
 
-const TASK_COLS = ['ID', 'Title', 'Description', 'Start Date', 'End Date', 'Status', 'Priority', 'Notes', 'Daily Log', 'Created At', 'Updated At', 'Completed At'];
-const LEARN_COLS = ['ID', 'Type', 'Parent ID', 'Order', 'Title', 'Status', 'Color', 'URL', 'Resource Kind', 'Notes', 'Key Takeaways', 'Practical Evidence', 'Created At', 'Updated At', 'Completed At'];
 
 export default function Settings() {
-  const { apiUrl, connect, configured, tasks, learning, lastSync, error } = useData();
+  const { apiUrl, connect, configured, tasks, learning, lastSync, error, toast } = useData();
+  const [cd, setCd] = useState(getCountdownSettings);
+  const cdError = !cd.label.trim() ? 'Add a title' : !cd.targetDate ? 'Pick a target date' : cd.startDate && cd.startDate >= cd.targetDate ? 'Start date must be before the target date' : '';
+  const saveCountdown = (e) => {
+    e.preventDefault();
+    if (cdError) return;
+    saveCountdownSettings({ ...cd, label: cd.label.trim() });
+    toast('Countdown updated');
+  };
+  const resetCountdown = () => {
+    saveCountdownSettings(null);
+    setCd({ ...COUNTDOWN_DEFAULTS });
+    toast('Countdown reset');
+  };
   const [url, setUrl] = useState(apiUrl);
   const [key, setKey] = useState(getApiKey());
   const [test, setTest] = useState({ state: 'idle', msg: '' });
@@ -45,7 +57,12 @@ export default function Settings() {
             <h3>
               <PlugZap size={20} /> Apps Script Web App
             </h3>
-            <span className={`conn-badge ${configured && !error ? 'on' : 'off'}`}>{configured ? (error ? 'Connection issue' : 'Connected') : 'Not connected'}</span>
+            <div className="card-head-actions">
+              <a className="link-btn" href={SHEET_URL} target="_blank" rel="noreferrer">
+                Open sheet <ExternalLink size={14} />
+              </a>
+              <span className={`conn-badge ${configured && !error ? 'on' : 'off'}`}>{configured ? (error ? 'Connection issue' : 'Connected') : 'Not connected'}</span>
+            </div>
           </div>
           <form className="form-grid" onSubmit={save}>
             <Field label="Web App URL" hint="Deploy → Manage deployments → copy the URL ending in /exec" full>
@@ -101,44 +118,30 @@ export default function Settings() {
 
         <section className="card clay">
           <div className="card-head">
-            <h3>Quick setup</h3>
-            <a className="link-btn" href={SHEET_URL} target="_blank" rel="noreferrer">
-              Open sheet <ExternalLink size={14} />
-            </a>
+            <h3>
+              <Hourglass size={20} /> Dashboard countdown
+            </h3>
           </div>
-          <ol className="steps">
-            <li>
-              Open the sheet → <b>Extensions → Apps Script</b>.
-            </li>
-            <li>
-              Paste <code>Code.gs</code> from the download, click <b>Save</b>.
-            </li>
-            <li>
-              Choose the <b>setup</b> function → <b>Run</b> → allow access. Headers appear in both tabs.
-            </li>
-            <li>
-              <b>Deploy → New deployment → Web app</b>. Execute as <b>Me</b>, access <b>Anyone</b>.
-            </li>
-            <li>Copy the Web App URL, paste it on the left and click Save &amp; connect.</li>
-          </ol>
-          <div className="cols">
-            <div>
-              <div className="eyebrow">Task tab columns</div>
-              <div className="col-tags">
-                {TASK_COLS.map((c) => (
-                  <span key={c}>{c}</span>
-                ))}
-              </div>
+          <form className="form-grid" onSubmit={saveCountdown}>
+            <Field label="Countdown title" hint="Shown above the big number on the Dashboard" full>
+              <input className="input" value={cd.label} maxLength={60} onChange={(e) => setCd({ ...cd, label: e.target.value })} placeholder="Appraisal countdown" />
+            </Field>
+            <Field label="Target date" hint="The day you are counting down to">
+              <input className="input" type="date" value={cd.targetDate} onChange={(e) => setCd({ ...cd, targetDate: e.target.value })} />
+            </Field>
+            <Field label="Start date" hint="Used for the progress bar (Day X of Y)">
+              <input className="input" type="date" value={cd.startDate} onChange={(e) => setCd({ ...cd, startDate: e.target.value })} />
+            </Field>
+            {cdError && <p className="field-error field-full">{cdError}</p>}
+            <div className="form-actions field-full">
+              <button type="submit" className="btn btn-primary" disabled={!!cdError}>
+                <Save size={16} /> Save countdown
+              </button>
+              <button type="button" className="btn btn-ghost" onClick={resetCountdown}>
+                <RotateCcw size={16} /> Reset to default
+              </button>
             </div>
-            <div>
-              <div className="eyebrow">Learning tab columns</div>
-              <div className="col-tags">
-                {LEARN_COLS.map((c) => (
-                  <span key={c}>{c}</span>
-                ))}
-              </div>
-            </div>
-          </div>
+          </form>
         </section>
       </div>
     </div>

@@ -2,11 +2,12 @@ import { useEffect, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { CalendarDays, GraduationCap, LayoutDashboard, Menu, RefreshCw, Settings, Sparkles, X } from 'lucide-react';
 import { useData } from '../context/DataContext';
-
+import { StickyNote } from "lucide-react";
 const NAV = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
   { to: '/tasks', label: 'Tasks', icon: CalendarDays },
   { to: '/learning', label: 'Learning', icon: GraduationCap },
+  { to: '/rough-notes', label: 'Rough Notes', icon: StickyNote },
   { to: '/settings', label: 'Settings', icon: Settings }
 ];
 

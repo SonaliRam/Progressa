@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { CalendarClock, Flag, Hourglass } from 'lucide-react';
-import { APPRAISAL_DATE, COUNTDOWN_START } from '../lib/constants';
+import { useCountdownSettings } from '../lib/countdown';
 import { countWeekdays, diffDays, fmtLong, toKey } from '../lib/dates';
 import { useNow } from '../context/DataContext';
 
@@ -9,14 +9,17 @@ const two = (n) => String(n).padStart(2, '0');
 export default function Countdown() {
   const now = useNow(1000);
   const today = toKey(now);
+  const { label, targetDate: APPRAISAL_DATE, startDate } = useCountdownSettings();
+  // Start must be before the target for the progress bar to make sense.
+  const COUNTDOWN_START = startDate && startDate < APPRAISAL_DATE ? startDate : today;
 
-  const total = diffDays(COUNTDOWN_START, APPRAISAL_DATE); // 162 days
+  const total = diffDays(COUNTDOWN_START, APPRAISAL_DATE);
   const daysLeft = Math.max(0, diffDays(today, APPRAISAL_DATE));
   const elapsed = Math.min(total, Math.max(0, diffDays(COUNTDOWN_START, today)));
   const pct = total > 0 ? (elapsed / total) * 100 : 100;
   const reached = daysLeft === 0;
 
-  const workdays = useMemo(() => countWeekdays(today, APPRAISAL_DATE), [today]);
+  const workdays = useMemo(() => countWeekdays(today, APPRAISAL_DATE), [today, APPRAISAL_DATE]);
   const weeks = Math.floor(daysLeft / 7);
   const extraDays = daysLeft % 7;
 
@@ -30,10 +33,10 @@ export default function Countdown() {
   const digits = String(daysLeft).padStart(3, '0').split('');
 
   return (
-    <section className="countdown clay" aria-label="Appraisal countdown">
+    <section className="countdown clay" aria-label={label}>
       <div className="cd-main">
         <div className="cd-eyebrow">
-          <Hourglass size={16} /> Appraisal countdown
+          <Hourglass size={16} /> {label}
         </div>
         <div className="cd-digits" aria-label={`${daysLeft} days remaining`}>
           <span className="cd-number">
@@ -47,7 +50,7 @@ export default function Countdown() {
         </div>
         <div className="cd-tick">
           {reached ? (
-            'Appraisal day is here — good luck!'
+            'The day is here — good luck!'
           ) : (
             <>
               Drops to <b>{daysLeft - 1}</b> in{' '}
@@ -82,7 +85,7 @@ export default function Countdown() {
         <div className="cd-progress">
           <div className="cd-progress-label">
             <CalendarClock size={14} />
-            Day {Math.min(elapsed + 1, total)} of {total} · {Math.round(pct)}% of the journey
+            Day {Math.min(elapsed + 1, Math.max(total, 1))} of {Math.max(total, 1)} · {Math.round(pct)}% of the journey
           </div>
           <div className="cd-track">
             <div className="cd-fill" style={{ width: `${Math.max(pct, 2)}%` }} />

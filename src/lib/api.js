@@ -80,9 +80,15 @@ async function call(payload, overrideUrl, overrideKey) {
 export const api = {
   ping: (url, key) => call({ action: 'ping' }, url, key),
   getAll: () => call({ action: 'getAll' }),
+  list: (sheet) => call({ action: 'list', sheet }),
   create: (sheet, data) => call({ action: 'create', sheet, data }),
   update: (sheet, id, data) => call({ action: 'update', sheet, id, data }),
   remove: (sheet, id) => call({ action: 'delete', sheet, id }),
   /** ops: [{ action: 'create'|'update'|'delete', sheet, id?, data? }] — run in one request. */
-  batch: (ops) => call({ action: 'batch', ops })
+  batch: (ops) => call({ action: 'batch', ops }),
+  // Rough Notes (sticky notes) — one row per note in the "Notes" tab.
+  listNotes: () => call({ action: 'list', sheet: 'Notes' }),
+  createNote: (data) => call({ action: 'create', sheet: 'Notes', data }),
+  updateNote: (id, data) => call({ action: 'update', sheet: 'Notes', id, data }),
+  deleteNote: (id) => call({ action: 'delete', sheet: 'Notes', id })
 };

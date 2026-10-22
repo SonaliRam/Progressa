@@ -7,7 +7,7 @@ import Tasks from './pages/Tasks';
 import Learning from './pages/Learning';
 import LearningTech from './pages/LearningTech';
 import Settings from './pages/Settings';
-
+import RoughNotes from './pages/RoughNotes';
 export default function App() {
   return (
     <EditorProvider>
@@ -19,6 +19,7 @@ export default function App() {
             <Route path="/tasks" element={<Tasks />} />
             <Route path="/learning" element={<Learning />} />
             <Route path="/learning/tech/:id" element={<LearningTech />} />
+            <Route path="/rough-notes" element={<RoughNotes />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
