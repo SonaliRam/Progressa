@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, ChevronRight, Library, ListChecks, Pencil, Plus } from 'lucide-react';
 import { useData } from '../context/DataContext';
 import { TOPIC_STATUSES, TOPIC_STATUS_STYLE, childrenOf, colorOf, summarize, topicsOfTech } from '../lib/learning';
-import { EmptyState, Spinner } from '../components/ui';
+import { EmptyState, Spinner, PageLoader } from '../components/ui';
 import { ProgressRing, QuickAdd } from '../components/learning/Bits';
 import { useEditor } from '../components/learning/Editor';
 import ResourceList from '../components/learning/ResourceList';
@@ -32,9 +32,7 @@ export default function LearningTech() {
     return (
       <div className="page">
         {loading && !loaded ? (
-          <div className="center-pad">
-            <Spinner size={24} />
-          </div>
+          <PageLoader />
         ) : (
           <EmptyState
             icon={<ListChecks size={26} />}

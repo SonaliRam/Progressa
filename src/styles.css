@@ -3704,3 +3704,163 @@ a.res-title:hover {
 .rn-pinned { padding-bottom: 12px; margin-bottom: 8px; border-bottom: 1px dashed var(--edge, #d9d2c5); }
 .rn-pinned .rn-day-label { display: flex; align-items: center; gap: 5px; }
 .rn-sticky.is-pinned { box-shadow: inset 0 0 0 2px var(--edge); }
+
+/* =====================================================================
+   Fixes: no sideways scroll, centred loader, compact notes board, 404
+   ===================================================================== */
+html,
+body {
+  max-width: 100%;
+  overflow-x: clip; /* never a horizontal scrollbar (clip keeps sticky elements working) */
+}
+img,
+svg,
+video,
+canvas {
+  max-width: 100%;
+}
+
+/* page loader — always in the middle of the screen */
+.page-loader {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--coral);
+  pointer-events: none;
+  z-index: 30;
+}
+
+/* Rough Notes — grid items may shrink, so nothing pushes the page wider */
+.rn-layout {
+  grid-template-columns: minmax(0, 1fr) 320px;
+}
+.rn-writer,
+.rn-board {
+  min-width: 0;
+}
+.rn-date input {
+  min-width: 0;
+  max-width: 100%;
+}
+.rn-editor-body {
+  overflow-wrap: anywhere;
+}
+.rn-editor-body table {
+  display: block;
+  overflow-x: auto;
+}
+
+@media (max-width: 1100px) {
+  .rn-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  /* saved notes live in their own scroll box, so the page doesn't grow with every note */
+  .rn-board {
+    max-height: min(560px, 72vh);
+    max-height: min(560px, 72dvh);
+  }
+  .rn-board-list {
+    flex: 1;
+    min-height: 0;
+    overscroll-behavior: contain;
+    scroll-snap-type: y proximity;
+  }
+  .rn-day {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 14px 12px;
+  }
+  .rn-day-label {
+    grid-column: 1 / -1;
+    scroll-snap-align: start;
+  }
+}
+
+/* ---------- mobile breathing room ---------- */
+@media (max-width: 768px) {
+  .content {
+    padding: 14px 12px 24px;
+  }
+  .page {
+    gap: 14px;
+  }
+  .page-header h1 {
+    font-size: 1.5rem;
+  }
+  .rn-writer {
+    padding: 14px;
+    gap: 10px;
+  }
+  .rn-title {
+    font-size: 1.25rem;
+  }
+  .rn-meta {
+    gap: 10px;
+  }
+  .rn-swatches {
+    gap: 6px;
+  }
+  .rn-toolbar {
+    gap: 2px;
+    padding: 4px;
+  }
+  .rn-tool {
+    width: 32px;
+    height: 32px;
+  }
+  .rn-sep {
+    margin: 0 2px;
+  }
+  .rn-editor {
+    min-height: 220px;
+    padding: 2px 12px;
+  }
+  .rn-editor-body {
+    min-height: 200px;
+  }
+  .rn-actions {
+    flex-wrap: wrap;
+  }
+  .rn-actions .btn {
+    flex: 1 1 140px;
+    justify-content: center;
+  }
+  .rn-board {
+    padding: 12px 10px 12px 12px;
+  }
+  .rn-day {
+    grid-template-columns: 1fr;
+  }
+  .rn-view {
+    padding: 14px 16px;
+  }
+}
+
+/* ---------- 404 ---------- */
+.nf-page {
+  min-height: 70vh;
+  min-height: 70dvh;
+  justify-content: center;
+  align-items: center;
+}
+.nf-card {
+  width: 100%;
+  max-width: 440px;
+  padding: 36px 24px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+.nf-code {
+  font-family: var(--font-display);
+  font-size: clamp(4rem, 18vw, 6.5rem);
+  font-weight: 800;
+  line-height: 1;
+  color: var(--coral);
+}
+.nf-card p {
+  margin: 0 0 8px;
+}

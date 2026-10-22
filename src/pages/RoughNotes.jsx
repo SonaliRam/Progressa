@@ -315,7 +315,7 @@ export default function RoughNotes() {
           </div>
           <div className="rn-board-list">
             {loading ? (
-              <div className="rn-loading"><Spinner /> Loading notes…</div>
+              <div className="rn-loading"><Spinner size={22} /> Loading notes…</div>
             ) : notes.length === 0 ? (
               <EmptyState icon={<StickyNote size={26} />} title="No notes yet" text="Saved notes will stick here." />
             ) : (

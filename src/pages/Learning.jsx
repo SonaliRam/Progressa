@@ -6,7 +6,7 @@ import { DEFAULT_CATEGORIES, categoriesOf, childrenOf, colorOf, summarize, topic
 import { startOfWeek, toKey } from '../lib/dates';
 import { useToday } from '../context/DataContext';
 import ConnectCard from '../components/ConnectCard';
-import { EmptyState, PageHeader, Spinner } from '../components/ui';
+import { EmptyState, PageHeader, Spinner, PageLoader } from '../components/ui';
 import { Bar, MenuButton, QuickAdd } from '../components/learning/Bits';
 import { useEditor } from '../components/learning/Editor';
 import { SortableItem, SortableList, justDragged } from '../components/learning/Sortable';
@@ -78,9 +78,7 @@ export default function Learning() {
   if (!configured) body = <ConnectCard />;
   else if (loading && !loaded)
     body = (
-      <div className="center-pad">
-        <Spinner size={24} />
-      </div>
+      <PageLoader />
     );
   else if (loaded && !learningReady) body = <UpgradeNotice />;
   else if (loaded && cats.length === 0)

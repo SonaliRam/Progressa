@@ -1,9 +1,8 @@
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { Route, Routes } from 'react-router-dom';
 import Sidebar from './components/Sidebar';
-import { Toasts } from './components/ui';
+import { Toasts, PageLoader } from './components/ui';
 import { EditorProvider } from './components/learning/Editor';
 import { lazy, Suspense } from 'react';
-import { Spinner } from './components/ui';
 
 // Each page is downloaded the first time you open it (the notes editor and charts are large),
 // so the app shell appears faster.
@@ -13,6 +12,7 @@ const Learning = lazy(() => import('./pages/Learning'));
 const LearningTech = lazy(() => import('./pages/LearningTech'));
 const Settings = lazy(() => import('./pages/Settings'));
 const RoughNotes = lazy(() => import('./pages/RoughNotes'));
+const NotFound = lazy(() => import('./pages/NotFound'));
 
 // Fetch the other pages quietly once the first one is on screen, so switching tabs is instant.
 if (typeof window !== 'undefined') {
@@ -28,7 +28,7 @@ export default function App() {
       <div className="app">
         <Sidebar />
         <main className="content">
-          <Suspense fallback={<div className="page" style={{ display: 'grid', placeItems: 'center', minHeight: '40vh' }}><Spinner /></div>}>
+          <Suspense fallback={<PageLoader />}>
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/tasks" element={<Tasks />} />
@@ -36,7 +36,7 @@ export default function App() {
             <Route path="/learning/tech/:id" element={<LearningTech />} />
             <Route path="/rough-notes" element={<RoughNotes />} />
             <Route path="/settings" element={<Settings />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
+            <Route path="*" element={<NotFound />} />
           </Routes>
           </Suspense>
         </main>

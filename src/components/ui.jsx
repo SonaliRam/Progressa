@@ -74,6 +74,11 @@ export function Spinner({ size = 18 }) {
   return <Loader2 size={size} className="spin" aria-label="Loading" />;
 }
 
+// Full-screen centred loader. Rendered on <body> so animated parents can't shift it off-centre.
+export function PageLoader() {
+  return createPortal(<div className="page-loader"><Spinner size={28} /></div>, document.body);
+}
+
 export function Field({ label, hint, error, children, full }) {
   return (
     <label className={`field ${full ? 'field-full' : ''}`}>
