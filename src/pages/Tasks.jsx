@@ -190,7 +190,7 @@ export default function Tasks() {
     <div className="page">
       <PageHeader
         eyebrow="Task manager"
-        title="Plan your days"
+        title="Plan your Days"
         subtitle="Schedule tasks on the calendar, track daily status and multi-day work."
         actions={
           <>

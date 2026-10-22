@@ -160,7 +160,7 @@ export default function RoughNotes() {
 
   return (
     <div className="page rn-page">
-      <PageHeader eyebrow="Rough Notes" title="Jot it down"
+      <PageHeader eyebrow="Rough Notes" title="Jot It Down"
         subtitle="Write a note, save it, and it sticks to your board — grouped by date." />
 
       <div className="rn-layout">

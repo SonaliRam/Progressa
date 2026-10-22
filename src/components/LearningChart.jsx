@@ -93,7 +93,7 @@ export default function LearningChart() {
         {!loaded || data.length === 0 ? (
           <EmptyState
             icon={<Layers size={26} />}
-            title={loaded ? 'No learning board yet' : 'Waiting for data'}
+            title={loaded ? 'No learning Board yet' : 'Waiting for data'}
             text={loaded ? 'Add categories, technologies and topics on the Learning page — progress shows up here.' : 'Connect your Google Sheet in Settings to see live progress.'}
           />
         ) : (

@@ -80,7 +80,7 @@ export default function Dashboard() {
     <div className="page">
       <PageHeader
         eyebrow={fmtLong(today)}
-        title={`${greeting(now.getHours())} 👋`}
+        title={`${greeting(now.getHours())}`}
         subtitle={
           loaded
             ? s.todays.length

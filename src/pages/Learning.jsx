@@ -108,7 +108,7 @@ export default function Learning() {
     <div className="page learning-page">
       <PageHeader
         eyebrow="Learning tracker"
-        title="Learning board"
+        title="Learning Board"
         subtitle="Category → technology → topics. Learn it, practise it, prove it, tick it off."
         actions={
           learningReady &&
