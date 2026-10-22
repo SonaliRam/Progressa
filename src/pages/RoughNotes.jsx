@@ -7,7 +7,7 @@ import { Highlight } from '@tiptap/extension-highlight';
 import { Table, TableRow, TableCell, TableHeader } from '@tiptap/extension-table';
 import {
   Bold, Italic, Strikethrough, List, ListOrdered, Heading2, Highlighter, Table2,
-  Undo2, Redo2, Save, Plus, Pencil, Trash2, CalendarDays, StickyNote, RefreshCw, X
+  Undo2, Redo2, Save, Plus, Pencil, Trash2, CalendarDays, StickyNote, RefreshCw, X, Pin, PinOff
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { useData } from '../context/DataContext';
@@ -21,6 +21,10 @@ const NOTE_COLORS = [
   { key: 'peach', bg: '#ffe9dc', edge: '#ffb38a' }
 ];
 const colorOf = (k) => NOTE_COLORS.find((c) => c.key === k) || NOTE_COLORS[0];
+
+// Pinned notes stay at the top of the board (max 3). Sheets may return TRUE / "true".
+const MAX_PINS = 3;
+const isPinned = (n) => n?.pinned === true || String(n?.pinned).toLowerCase() === 'true';
 
 const todayISO = () => {
   const d = new Date();
@@ -142,9 +146,29 @@ export default function RoughNotes() {
     }
   };
 
-  // Group notes date-wise, newest date first; inside a day, newest first.
+  const togglePin = async (note) => {
+    const next = !isPinned(note);
+    if (next && notes.filter(isPinned).length >= MAX_PINS) {
+      toast(`You can pin up to ${MAX_PINS} notes. Unpin one first.`, 'error');
+      return;
+    }
+    try {
+      const saved = await api.updateNote(note.id, { pinned: next });
+      setNotes((n) => n.map((x) => (x.id === note.id ? { ...x, ...saved, pinned: next } : x)));
+      setOpenNote((o) => (o && o.id === note.id ? { ...o, pinned: next } : o));
+      toast(next ? 'Note pinned' : 'Note unpinned');
+    } catch (e) {
+      toast(`Couldn't update pin: ${e.message}`, 'error');
+    }
+  };
+
+  // Pinned notes shown separately at the top, newest first.
+  const pinned = useMemo(() => notes.filter(isPinned)
+    .sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.createdAt || '').localeCompare(a.createdAt || '')), [notes]);
+
+  // Group the other notes date-wise, newest date first; inside a day, newest first.
   const groups = useMemo(() => {
-    const sorted = [...notes].sort((a, b) =>
+    const sorted = notes.filter((n) => !isPinned(n)).sort((a, b) =>
       (b.date || '').localeCompare(a.date || '') || (b.createdAt || '').localeCompare(a.createdAt || ''));
     const map = new Map();
     sorted.forEach((n) => {
@@ -237,7 +261,26 @@ export default function RoughNotes() {
             ) : notes.length === 0 ? (
               <EmptyState icon={<StickyNote size={26} />} title="No notes yet" text="Saved notes will stick here." />
             ) : (
-              groups.map(([d, list]) => (
+              <>
+              {pinned.length > 0 && (
+                <div className="rn-day rn-pinned">
+                  <div className="rn-day-label"><Pin size={13} /> Pinned ({pinned.length}/{MAX_PINS})</div>
+                  {pinned.map((n, i) => {
+                    const c = colorOf(n.color);
+                    return (
+                      <button key={n.id} type="button" className="rn-sticky is-pinned"
+                        style={{ background: c.bg, '--edge': c.edge, '--tilt': `${i % 2 ? 0.8 : -0.8}deg` }}
+                        onClick={() => setOpenNote(n)}>
+                        <span className="rn-pin" />
+                        <strong>{n.title || 'Untitled'}</strong>
+                        <span className="rn-snippet">{plain(n.content) || '—'}</span>
+                        <span className="rn-time">{prettyDate(n.date)}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              {groups.map(([d, list]) => (
                 <div key={d} className="rn-day">
                   <div className="rn-day-label">{prettyDate(d)}</div>
                   {list.map((n, i) => {
@@ -254,7 +297,8 @@ export default function RoughNotes() {
                     );
                   })}
                 </div>
-              ))
+              ))}
+              </>
             )}
           </div>
         </aside>
@@ -268,6 +312,9 @@ export default function RoughNotes() {
             <button className={`btn btn-sm ${armed ? 'btn-danger' : 'btn-ghost'}`}
               onClick={() => (armed ? remove(openNote) : setArmed(true))}>
               <Trash2 size={15} /> {armed ? 'Click to confirm' : 'Delete'}
+            </button>
+            <button className="btn btn-sm btn-ghost" onClick={() => togglePin(openNote)}>
+              {isPinned(openNote) ? <><PinOff size={15} /> Unpin</> : <><Pin size={15} /> Pin</>}
             </button>
             <button className="btn btn-sm btn-soft" onClick={() => startEdit(openNote)}><Pencil size={15} /> Edit</button>
           </>
