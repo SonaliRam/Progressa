@@ -31,7 +31,7 @@ export default function LearningTech() {
   if (!tech) {
     return (
       <div className="page">
-        {loading || !loaded ? (
+        {loading && !loaded ? (
           <div className="center-pad">
             <Spinner size={24} />
           </div>

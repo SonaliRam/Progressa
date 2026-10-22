@@ -2,18 +2,33 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import Sidebar from './components/Sidebar';
 import { Toasts } from './components/ui';
 import { EditorProvider } from './components/learning/Editor';
-import Dashboard from './pages/Dashboard';
-import Tasks from './pages/Tasks';
-import Learning from './pages/Learning';
-import LearningTech from './pages/LearningTech';
-import Settings from './pages/Settings';
-import RoughNotes from './pages/RoughNotes';
+import { lazy, Suspense } from 'react';
+import { Spinner } from './components/ui';
+
+// Each page is downloaded the first time you open it (the notes editor and charts are large),
+// so the app shell appears faster.
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const Tasks = lazy(() => import('./pages/Tasks'));
+const Learning = lazy(() => import('./pages/Learning'));
+const LearningTech = lazy(() => import('./pages/LearningTech'));
+const Settings = lazy(() => import('./pages/Settings'));
+const RoughNotes = lazy(() => import('./pages/RoughNotes'));
+
+// Fetch the other pages quietly once the first one is on screen, so switching tabs is instant.
+if (typeof window !== 'undefined') {
+  const preload = () => {
+    import('./pages/Tasks'); import('./pages/Learning'); import('./pages/LearningTech');
+    import('./pages/RoughNotes'); import('./pages/Settings'); import('./pages/Dashboard');
+  };
+  (window.requestIdleCallback || ((cb) => setTimeout(cb, 1500)))(preload);
+}
 export default function App() {
   return (
     <EditorProvider>
       <div className="app">
         <Sidebar />
         <main className="content">
+          <Suspense fallback={<div className="page" style={{ display: 'grid', placeItems: 'center', minHeight: '40vh' }}><Spinner /></div>}>
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/tasks" element={<Tasks />} />
@@ -23,6 +38,7 @@ export default function App() {
             <Route path="/settings" element={<Settings />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
+          </Suspense>
         </main>
         <Toasts />
       </div>

@@ -57,9 +57,11 @@ function ToolBtn({ on, active, title, children }) {
 }
 
 export default function RoughNotes() {
-  const { toast, configured } = useData();
-  const [notes, setNotes] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const { toast, configured, syncedNotes, refresh, rememberNotes, notesSnapshot } = useData();
+  // Start from the copy saved in this browser so the board appears instantly.
+  // Notes already loaded by the app's main sync show instantly when you open this page.
+  const [notes, setNotes] = useState(() => notesSnapshot() || []);
+  const [loading, setLoading] = useState(() => !notesSnapshot());
   const [saving] = useState(false);
   const [title, setTitle] = useState('');
   const [date, setDate] = useState(todayISO());
@@ -96,20 +98,43 @@ export default function RoughNotes() {
     return run.finally(() => { pending.current -= 1; });
   };
 
-  const load = useCallback(async () => {
+  // Notes come with the app's main sync (one Apps Script request for everything).
+  // Fallback: ask for the Notes tab alone if the deployed script doesn't send notes yet.
+  const load = useCallback(async ({ force = false } = {}) => {
     if (!configured) { setLoading(false); return; }
     if (pending.current > 0) return; // don't overwrite changes that are still saving
-    setLoading(true);
+    const known = notesSnapshot();
+    if (known && !force) { setLoading(false); return; } // already showing them
+    if (!known) setLoading(true);
     try {
-      setNotes((await api.listNotes()) || []);
+      const data = await refresh({ silent: true });
+      if (Array.isArray(data?.Notes)) {
+        if (pending.current === 0) setNotes(data.Notes);
+        return;
+      }
+      const fresh = (await api.listNotes()) || [];
+      if (pending.current === 0) setNotes(fresh);
     } catch (e) {
       toast(`Couldn't load notes: ${e.message}`, 'error');
     } finally {
       setLoading(false);
     }
-  }, [configured, toast]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [configured, toast, refresh]);
 
   useEffect(() => { load(); }, [load]);
+
+  // A background sync brought a fresh copy of the notes.
+  useEffect(() => {
+    if (!syncedNotes || pending.current > 0) return;
+    setNotes(syncedNotes);
+    setLoading(false);
+  }, [syncedNotes]);
+
+  // Remember what's on screen (minus notes not yet in the sheet) for the next visit.
+  useEffect(() => {
+    if (!loading) rememberNotes(notes.filter((x) => !String(x.id).startsWith('tmp-')));
+  }, [notes, loading, rememberNotes]);
 
   const resetEditor = () => {
     setTitle(''); setDate(todayISO()); setColor('yellow'); setEditingId(null);
@@ -142,7 +167,12 @@ export default function RoughNotes() {
         idMap.current[tempId] = saved.id; // later edits / deletes / pins use the real id
         return saved;
       })
-        .then((saved) => setNotes((n) => n.map((x) => (x.id === tempId ? { ...x, ...saved, pinned: x.pinned } : x))))
+        .then((saved) => {
+          setNotes((n) => n.map((x) => (x.id === tempId ? { ...x, ...saved, pinned: x.pinned } : x)));
+          // If you already left this page, still remember the new note for your next visit.
+          const memo = notesSnapshot();
+          if (memo && !memo.some((x) => x.id === saved.id)) rememberNotes([saved, ...memo]);
+        })
         .catch((e) => {
           setNotes((n) => n.filter((x) => x.id !== tempId));
           toast(`Couldn't save note: ${e.message}`, 'error');
@@ -281,7 +311,7 @@ export default function RoughNotes() {
         <aside className="rn-board">
           <div className="rn-board-head">
             <h3><StickyNote size={18} /> Saved notes <span className="rn-count">{notes.length}</span></h3>
-            <button className="icon-btn icon-btn-sm" onClick={load} title="Refresh" aria-label="Refresh"><RefreshCw size={14} /></button>
+            <button className="icon-btn icon-btn-sm" onClick={() => load({ force: true })} title="Refresh" aria-label="Refresh"><RefreshCw size={14} /></button>
           </div>
           <div className="rn-board-list">
             {loading ? (

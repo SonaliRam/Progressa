@@ -40,6 +40,14 @@ export function DataProvider({ children }) {
   const idMap = useRef({}); // temporary id -> real sheet id
   const lastSyncAt = useRef(0);
   const refreshRef = useRef(null);
+  const inFlight = useRef(null); // the getAll request currently running, if any
+  // Rough Notes arrive in the same getAll request; the latest copy is kept here (null = not loaded yet).
+  const [syncedNotes, setSyncedNotes] = useState(null);
+  // In-memory copy of the notes as last shown on the Rough Notes page (includes your latest
+  // edits), so reopening the page is instant without waiting for the next sync.
+  const notesMemo = useRef(null);
+  const rememberNotes = useCallback((list) => { notesMemo.current = list; }, []);
+  const notesSnapshot = useCallback(() => notesMemo.current, []);
 
   const commitTasks = useCallback((fn) => {
     const next = fn(tasksRef.current);
@@ -84,11 +92,19 @@ export function DataProvider({ children }) {
         setLoaded(false);
         return;
       }
+      // Focus, tab-visible, page switch and the 1-minute timer can all fire together:
+      // share one request instead of sending several slow ones to Apps Script.
+      if (inFlight.current) return inFlight.current;
       if (!silent) setLoading(true);
       setSyncing(true);
       const gen = writeGen.current;
+      const job = (async () => {
       try {
         const data = await api.getAll();
+        if (Array.isArray(data?.Notes)) {
+          notesMemo.current = data.Notes;
+          setSyncedNotes(data.Notes);
+        }
         if (pendingWrites.current === 0 && gen === writeGen.current) {
           commitTasks(() => (data?.Task || []).map(normTask));
           commitLearning(() => (data?.Learning || []).map(normLearning));
@@ -101,13 +117,18 @@ export function DataProvider({ children }) {
         }
         setLoaded(true);
         setError('');
+        return data;
       } catch (e) {
         setError(e.message);
         if (!silent) toast(e.message, 'error');
       } finally {
         setSyncing(false);
         if (!silent) setLoading(false);
+        inFlight.current = null;
       }
+      })();
+      inFlight.current = job;
+      return job;
     },
     [toast, commitTasks, commitLearning, resyncAfterWrites]
   );
@@ -117,6 +138,8 @@ export function DataProvider({ children }) {
   useEffect(() => {
     commitTasks(() => []);
     commitLearning(() => []);
+    setSyncedNotes(null);
+    notesMemo.current = null;
     setLoaded(false);
     if (apiUrl) refresh();
   }, [apiUrl, refresh, commitTasks, commitLearning]);
@@ -380,6 +403,9 @@ export function DataProvider({ children }) {
     apiUrl,
     connect,
     refresh,
+    syncedNotes,
+    rememberNotes,
+    notesSnapshot,
     resolveId,
     toast,
     toasts,
