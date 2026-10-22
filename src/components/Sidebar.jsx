@@ -7,7 +7,7 @@ const NAV = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
   { to: '/tasks', label: 'Tasks', icon: CalendarDays },
   { to: '/learning', label: 'Learning', icon: GraduationCap },
-  { to: '/rough-notes', label: 'Rough Notes', icon: StickyNote },
+  { to: '/rough-notes', label: 'Notes', icon: StickyNote },
   { to: '/settings', label: 'Settings', icon: Settings }
 ];
 
