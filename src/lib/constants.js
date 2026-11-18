@@ -48,5 +48,3 @@ export function categoryColor(cat) {
   return FALLBACK_CAT[h % FALLBACK_CAT.length];
 }
 
-export const SHEET_URL =
-  'https://docs.google.com/spreadsheets/d/1bdt6aVBR5Hc4nDZyZsLMIXmS47Zk1fE9QxgKQHEDD7I/edit';

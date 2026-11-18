@@ -11,9 +11,9 @@ Everything you see — counts, today's list, both bar charts — is calculated f
 
 ## 1. Set up the Google Apps Script (backend) — about 5 minutes
 
-1. Open the sheet: https://docs.google.com/spreadsheets/d/1bdt6aVBR5Hc4nDZyZsLMIXmS47Zk1fE9QxgKQHEDD7I/edit
+1. Open your Google Sheet (kept private — the link is not stored in this repo).
 2. Menu **Extensions → Apps Script**.
-3. Delete everything in `Code.gs`, paste the contents of **`apps-script/Code.gs`**, press **Save** (💾).
+3. Delete everything in `Code.gs`, paste your backend script (kept outside this repo), press **Save** (💾).
 4. In the toolbar function dropdown choose **`setup`** → click **Run**.
    - Google asks for permission → *Review permissions* → choose your account → *Advanced* → *Go to project (unsafe)* → *Allow*. (This warning is normal for your own scripts.)
    - Go back to the sheet: both tabs now have a coral header row.
@@ -99,7 +99,6 @@ URLs are clean (`/tasks`, `/learning`, `/rough-notes`, `/settings`) — no `#`. 
 ## Project structure
 
 ```
-apps-script/Code.gs          Google Apps Script backend
 src/lib/config.js            EXEC_URL (Apps Script /exec URL)
 src/lib/api.js               Web App client (sends the secret key)
 src/context/AuthContext.jsx  Secret-key login / logout

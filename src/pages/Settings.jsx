@@ -1,6 +1,5 @@
 import { useState } from "react";
-import { ExternalLink, Hourglass, LogOut, RefreshCw, Save, ShieldCheck } from "lucide-react";
-import { SHEET_URL } from "../lib/constants";
+import { Hourglass, LogOut, RefreshCw, Save, ShieldCheck } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { useData } from "../context/DataContext";
 import { Field, PageHeader } from "../components/ui";
@@ -92,9 +91,6 @@ export default function Settings() {
               <ShieldCheck size={20} /> Account &amp; Sync
             </h3>
             <div className="card-head-actions">
-              <a className="link-btn" href={SHEET_URL} target="_blank" rel="noreferrer">
-                Open sheet <ExternalLink size={14} />
-              </a>
               <span className={`conn-badge ${!error ? "on" : "off"}`}>
                 {error ? "Connection issue" : "Connected"}
               </span>
