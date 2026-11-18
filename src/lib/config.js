@@ -8,4 +8,4 @@
 // ─────────────────────────────────────────────────────────────────────────────
 export const EXEC_URL =
   (import.meta.env.VITE_GAS_URL || "").trim() ||
-  "https://script.google.com/macros/s/AKfycbzrcCNCZ3Hj6NGDs55g1siauRxtBGke1hrNm2YigucEWCYY9POSPHrkRpMCKUX7gC83/exec";
+  "https://script.google.com/macros/s/AKfycby3xbUO63OqKGsR4CXHqANBVhITzqBdW8WKsDCoO_SuUEzWLLsy2119OWYH_j8B8k06kQ/exec";
