@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import { api, getApiUrl, saveConnection } from '../lib/api';
+import { api, getApiUrl } from '../lib/api';
 import { normTask, taskPayload } from '../lib/model';
 import { DEFAULT_CATEGORIES, CATEGORY_SWATCHES, categoriesOf, childrenOf, descendantIds, learningPayload, nextOrder, normLearning } from '../lib/learning';
 
@@ -25,7 +25,7 @@ export function DataProvider({ children }) {
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState('');
   const [lastSync, setLastSync] = useState(null);
-  const [apiUrl, setApiUrl] = useState(getApiUrl());
+  const apiUrl = getApiUrl(); // fixed in src/lib/config.js
   const [toasts, setToasts] = useState([]);
   const [apiVersion, setApiVersion] = useState(0); // Code.gs version, from getAll
   const location = useLocation();
@@ -166,17 +166,6 @@ export function DataProvider({ children }) {
     if (Date.now() - lastSyncAt.current > NAV_REFRESH_MS && pendingWrites.current === 0) refresh({ silent: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname]);
-
-  const connect = useCallback(
-    (url, key) => {
-      saveConnection(url, key);
-      const next = getApiUrl();
-      if (next === apiUrl) {
-        if (next) refresh();
-      } else setApiUrl(next);
-    },
-    [apiUrl, refresh]
-  );
 
   /** Optimistic create / update / delete, saved in order, re-synced with the sheet on failure. */
   const makeCrud = (sheet, commit, listRef, norm, payload, label) => ({
@@ -401,7 +390,6 @@ export function DataProvider({ children }) {
     lastSync,
     configured: Boolean(apiUrl),
     apiUrl,
-    connect,
     refresh,
     syncedNotes,
     rememberNotes,

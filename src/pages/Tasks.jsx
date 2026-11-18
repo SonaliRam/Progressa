@@ -7,7 +7,6 @@ import { dailyStatusFor, isOnDate, sortTasks } from '../lib/model';
 import { useData, useToday } from '../context/DataContext';
 import TaskRow from '../components/TaskRow';
 import TaskForm from '../components/TaskForm';
-import ConnectCard from '../components/ConnectCard';
 import { EmptyState, PageHeader, PriorityTag, Segmented, StatusPill } from '../components/ui';
 
 const MAX_CHIPS = 3;
@@ -210,7 +209,6 @@ export default function Tasks() {
         }
       />
 
-      {!configured && <ConnectCard />}
 
       {view === 'calendar' ? (
         <div className="cal-layout">

@@ -11,7 +11,6 @@ import TaskChart from '../components/TaskChart';
 import LearningChart from '../components/LearningChart';
 import TaskRow from '../components/TaskRow';
 import TaskForm from '../components/TaskForm';
-import ConnectCard from '../components/ConnectCard';
 import { EmptyState, PageHeader, PriorityTag, Spinner } from '../components/ui';
 
 function greeting(h) {
@@ -104,7 +103,6 @@ export default function Dashboard() {
         }
       />
 
-      {!configured && <ConnectCard />}
 
       <div className="hero-grid">
         <Countdown />

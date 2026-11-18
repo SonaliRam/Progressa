@@ -1,10 +1,10 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
-// base './' lets the built app run from any folder or static host (Netlify, Vercel, GitHub Pages).
+// base '/' is needed for clean URLs (/tasks, /learning/tech/123). public/_redirects sends every URL to index.html on Netlify.
 export default defineConfig({
   plugins: [react()],
-  base: './',
+  base: '/',
   build: {
     rollupOptions: {
       output: { manualChunks: { react: ['react', 'react-dom', 'react-router-dom'], charts: ['recharts'] } }

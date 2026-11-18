@@ -3701,9 +3701,19 @@ a.res-title:hover {
 }
 
 /* Rough Notes — pinned section */
-.rn-pinned { padding-bottom: 12px; margin-bottom: 8px; border-bottom: 1px dashed var(--edge, #d9d2c5); }
-.rn-pinned .rn-day-label { display: flex; align-items: center; gap: 5px; }
-.rn-sticky.is-pinned { box-shadow: inset 0 0 0 2px var(--edge); }
+.rn-pinned {
+  padding-bottom: 12px;
+  margin-bottom: 8px;
+  border-bottom: 1px dashed var(--edge, #d9d2c5);
+}
+.rn-pinned .rn-day-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.rn-sticky.is-pinned {
+  box-shadow: inset 0 0 0 2px var(--edge);
+}
 
 /* =====================================================================
    Fixes: no sideways scroll, centred loader, compact notes board, 404
@@ -3863,4 +3873,92 @@ canvas {
 }
 .nf-card p {
   margin: 0 0 8px;
+}
+
+/* =====================================================================
+   Secret-key login
+   ===================================================================== */
+.login-page {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 24px 16px;
+  background:
+    radial-gradient(circle at 15% 20%, var(--coral-soft), transparent 45%),
+    radial-gradient(circle at 85% 80%, var(--purple-soft), transparent 45%),
+    var(--bg);
+}
+.login-card {
+  width: 100%;
+  max-width: 400px;
+  padding: 32px 28px;
+  border-radius: var(--r-xl);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.login-brand {
+  margin-bottom: 8px;
+}
+.login-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.6rem;
+  color: var(--ink);
+}
+.login-sub {
+  margin: 0 0 6px;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+.login-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: var(--ink-2);
+}
+.login-input-wrap {
+  position: relative;
+}
+.login-input-wrap .input {
+  width: 100%;
+  padding-right: 44px;
+}
+.login-eye {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 6px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+}
+.login-eye:hover {
+  color: var(--ink);
+  background: var(--pink-soft);
+}
+.login-btn {
+  margin-top: 8px;
+  width: 100%;
+  justify-content: center;
+}
+
+/* Log out button at the bottom of the sidebar */
+.sidebar-logout {
+  margin-top: 10px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+  width: 100%;
+  text-align: left;
 }

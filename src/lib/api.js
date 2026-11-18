@@ -1,64 +1,53 @@
 // Thin client for the Google Apps Script Web App.
 // Requests are sent as text/plain so the browser does not need a CORS preflight,
 // which Apps Script cannot answer. Apps Script replies with a redirect that fetch follows.
+//
+// Login: the secret key is checked by Apps Script (Code.gs) on EVERY request.
+// The app only keeps the key in this browser after Apps Script has accepted it.
+import { EXEC_URL } from './config';
 
-const URL_KEY = 'wl.gasUrl';
-const API_KEY_KEY = 'wl.gasKey';
+const SECRET_KEY_STORE = 'progressa.secret';
+export const UNAUTHORIZED_EVENT = 'progressa:unauthorized';
 
-function readLS(key) {
+// Clean up the old Settings-page connection values.
+try {
+  window.localStorage.removeItem('wl.gasUrl');
+  window.localStorage.removeItem('wl.gasKey');
+} catch {
+  /* storage blocked */
+}
+
+export function getApiUrl() {
+  return EXEC_URL;
+}
+
+export function getSecretKey() {
   try {
-    return window.localStorage.getItem(key) || '';
+    return window.localStorage.getItem(SECRET_KEY_STORE) || '';
   } catch {
     return '';
   }
 }
-function writeLS(key, value) {
+export function setSecretKey(key) {
   try {
-    if (value) window.localStorage.setItem(key, value);
-    else window.localStorage.removeItem(key);
+    if (key) window.localStorage.setItem(SECRET_KEY_STORE, key);
+    else window.localStorage.removeItem(SECRET_KEY_STORE);
   } catch {
-    /* storage blocked — the env value still works */
+    /* storage blocked — login lasts until the tab is closed */
   }
 }
 
-// Stored when the user presses Disconnect, so a URL in .env doesn't silently reconnect.
-const DISCONNECTED = 'off';
-
-export function getApiUrl() {
-  const saved = readLS(URL_KEY);
-  if (saved === DISCONNECTED) return '';
-  return (saved || import.meta.env.VITE_GAS_URL || '').trim();
-}
-export function getApiKey() {
-  if (readLS(URL_KEY) === DISCONNECTED) return '';
-  return (readLS(API_KEY_KEY) || import.meta.env.VITE_GAS_KEY || '').trim();
-}
-export function saveConnection(url, key) {
-  const u = (url || '').trim();
-  writeLS(URL_KEY, u || (import.meta.env.VITE_GAS_URL ? DISCONNECTED : ''));
-  writeLS(API_KEY_KEY, (key || '').trim());
-}
-
-export function looksLikeGasUrl(url) {
-  return /^https:\/\/script\.google(usercontent)?\.com\/.+/.test(String(url || '').trim());
-}
-
-async function call(payload, overrideUrl, overrideKey) {
-  const url = (overrideUrl ?? getApiUrl()).trim();
-  if (!url) throw new Error('Not connected: add your Apps Script Web App URL in Settings.');
-
+async function call(payload, overrideKey) {
   let res;
   try {
-    res = await fetch(url, {
+    res = await fetch(EXEC_URL, {
       method: 'POST',
       redirect: 'follow',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ ...payload, key: overrideKey ?? getApiKey() })
+      body: JSON.stringify({ ...payload, key: overrideKey ?? getSecretKey() })
     });
   } catch {
-    throw new Error(
-      'Could not reach Google Apps Script. Check the Web App URL and that access is set to "Anyone".'
-    );
+    throw new Error('Could not reach Google Apps Script. Check your internet connection and try again.');
   }
 
   const text = await res.text();
@@ -73,12 +62,22 @@ async function call(payload, overrideUrl, overrideKey) {
     }
     throw new Error('Unexpected response from Apps Script.');
   }
-  if (!json.ok) throw new Error(json.error || 'Apps Script reported an error.');
+  if (!json.ok) {
+    const err = new Error(json.error || 'Apps Script reported an error.');
+    err.code = json.code || '';
+    // Key changed or removed on the server → sign out everywhere in the app.
+    if (err.code === 'UNAUTHORIZED' && overrideKey === undefined) {
+      window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
+    }
+    throw err;
+  }
   return json.data;
 }
 
 export const api = {
-  ping: (url, key) => call({ action: 'ping' }, url, key),
+  /** Checks a secret key with Apps Script. Resolves only if the key is correct. */
+  login: (key) => call({ action: 'login' }, key),
+  ping: () => call({ action: 'ping' }),
   getAll: () => call({ action: 'getAll' }),
   list: (sheet) => call({ action: 'list', sheet }),
   create: (sheet, data) => call({ action: 'create', sheet, data }),

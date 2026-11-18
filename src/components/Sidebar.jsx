@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { CalendarDays, GraduationCap, LayoutDashboard, Menu, RefreshCw, Settings, Sparkles, X } from 'lucide-react';
+import { CalendarDays, GraduationCap, LayoutDashboard, LogOut, Menu, RefreshCw, Settings, Sparkles, X } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
 import { StickyNote } from "lucide-react";
 const NAV = [
@@ -35,6 +36,7 @@ function Brand() {
 
 export default function Sidebar() {
   const { configured, syncing, error, lastSync, refresh } = useData();
+  const { logout } = useAuth();
   const state = !configured ? 'off' : error ? 'err' : 'ok';
   const [menuOpen, setMenuOpen] = useState(false);
   const location = useLocation();
@@ -104,6 +106,13 @@ export default function Sidebar() {
             </button>
           )}
         </div>
+
+        <button type="button" className="nav-link sidebar-logout" onClick={logout} title="Log out">
+          <span className="nav-icon">
+            <LogOut size={20} />
+          </span>
+          <span className="nav-label">Log out</span>
+        </button>
       </aside>
     </>
   );

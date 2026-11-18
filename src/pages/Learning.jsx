@@ -5,7 +5,6 @@ import { useData } from '../context/DataContext';
 import { DEFAULT_CATEGORIES, categoriesOf, childrenOf, colorOf, summarize, topicsOfCategory, topicsOfTech } from '../lib/learning';
 import { startOfWeek, toKey } from '../lib/dates';
 import { useToday } from '../context/DataContext';
-import ConnectCard from '../components/ConnectCard';
 import { EmptyState, PageHeader, Spinner, PageLoader } from '../components/ui';
 import { Bar, MenuButton, QuickAdd } from '../components/learning/Bits';
 import { useEditor } from '../components/learning/Editor';
@@ -25,7 +24,7 @@ const matchesFilter = (t, f) =>
 const guard = (fn) => (e) => !justDragged() && fn(e);
 
 export default function Learning() {
-  const { learning, configured, loaded, loading, learningReady, addLearning, reorderLearning, seedDefaultCategories, importLegacy } = useData();
+  const { learning, loaded, loading, learningReady, addLearning, reorderLearning, seedDefaultCategories, importLegacy } = useData();
   const { openEditor } = useEditor();
   const navigate = useNavigate();
   const today = useToday();
@@ -75,8 +74,7 @@ export default function Learning() {
 
   /* ---------- states before the board ---------- */
   let body = null;
-  if (!configured) body = <ConnectCard />;
-  else if (loading && !loaded)
+  if (loading && !loaded)
     body = (
       <PageLoader />
     );
